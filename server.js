@@ -113,12 +113,23 @@ function handleBid(game, playerIndex, bid) {
   if (game.currentPlayer !== playerIndex) return { success: false, error: 'Not your turn' };
   if (game.passedPlayers[playerIndex]) return { success: false, error: 'Already passed' };
   
-  const currentHighestBid = Math.max(...game.bids.filter(b => b !== null && b !== 'pass'));
+  const currentHighestBid = Math.max(...game.bids.filter(b => b !== null && b !== 'pass' && b !== 'betl').map(b => b === 'mexico' ? 20 : parseInt(b)), 0);
   const isFirstBid = game.bids.every(b => b === null);
+  const isFirstPlayer = playerIndex === (game.currentDealer + 1) % 3;
   
   if (bid === 'pass') {
+    // First player (left of dealer) CANNOT pass
+    if (isFirstBid && isFirstPlayer) {
+      return { success: false, error: 'First player cannot pass - must bid 5 or higher' };
+    }
     game.passedPlayers[playerIndex] = true;
     game.bids[playerIndex] = 'pass';
+  } else if (bid === 'betl') {
+    // Betl can be outbid by 7 or higher
+    if (!isFirstBid && currentHighestBid >= 7) {
+      return { success: false, error: 'Betl can only be bid if no one has bid 7 or higher' };
+    }
+    game.bids[playerIndex] = 'betl';
   } else {
     const numericBid = bid === 'mexico' ? 20 : parseInt(bid);
     
@@ -127,9 +138,23 @@ function handleBid(game, playerIndex, bid) {
       return { success: false, error: 'First bid must be at least 5' };
     }
     
-    // Subsequent bids must be higher
-    if (!isFirstBid && numericBid <= currentHighestBid) {
-      return { success: false, error: 'Bid must be higher than current bid' };
+    // Others cannot bid 5 (must pass or 6+)
+    if (!isFirstBid && numericBid === 5) {
+      return { success: false, error: 'Cannot bid 5 after first player - must bid 6 or higher' };
+    }
+    
+    // Handle Betl in current bids
+    const hasBetl = game.bids.some(b => b === 'betl');
+    if (hasBetl) {
+      // Can outbid betl with 7 or higher
+      if (numericBid < 7) {
+        return { success: false, error: 'Must bid 7 or higher to outbid Betl' };
+      }
+    } else {
+      // Normal bidding - must be higher than current
+      if (!isFirstBid && numericBid <= currentHighestBid) {
+        return { success: false, error: 'Bid must be higher than current bid' };
+      }
     }
     
     game.bids[playerIndex] = bid;
@@ -141,9 +166,16 @@ function handleBid(game, playerIndex, bid) {
     // Find bid winner
     let highestBid = -1;
     let winner = -1;
+    let isBetl = false;
+    
     for (let i = 0; i < 3; i++) {
       const playerBid = game.bids[i];
       if (playerBid && playerBid !== 'pass') {
+        if (playerBid === 'betl') {
+          isBetl = true;
+          winner = i;
+          break;
+        }
         const numericBid = playerBid === 'mexico' ? 20 : parseInt(playerBid);
         if (numericBid > highestBid) {
           highestBid = numericBid;
@@ -151,10 +183,16 @@ function handleBid(game, playerIndex, bid) {
         }
       }
     }
+    
     game.bidWinner = winner;
+    game.isBetl = isBetl;
     
     if (bid === 'mexico') {
       // Mexico: no talon, no trump, start playing
+      game.trump = null;
+      startPlaying(game);
+    } else if (isBetl) {
+      // Betl: no talon, no trump, start playing
       game.trump = null;
       startPlaying(game);
     } else {
@@ -303,15 +341,25 @@ function handlePlayCard(game, playerIndex, card) {
       winner: winner
     });
     
-    // Check if round is over
-    if (game.hands[0].length === 0) {
-      endRound(game);
-    } else {
-      // Next trick
-      game.currentTrick = [];
-      game.currentPlayer = winner;
-      broadcastGameState(game);
-    }
+    // Show completed trick with winner for 3 seconds
+    game.state = 'trick_complete';
+    game.lastTrickWinner = winner;
+    broadcastGameState(game);
+    
+    // Wait 3 seconds before continuing
+    setTimeout(() => {
+      // Check if round is over
+      if (game.hands[0].length === 0) {
+        endRound(game);
+      } else {
+        // Next trick
+        game.state = 'playing';
+        game.currentTrick = [];
+        game.currentPlayer = winner;
+        game.lastTrickWinner = null;
+        broadcastGameState(game);
+      }
+    }, 3000);
   } else {
     // Move to next player
     game.currentPlayer = (game.currentPlayer + 1) % 3;
@@ -324,24 +372,43 @@ function handlePlayCard(game, playerIndex, card) {
 function endRound(game) {
   const bidWinner = game.bidWinner;
   const bidValue = game.bids[bidWinner];
-  const numericBid = bidValue === 'mexico' ? 10 : parseInt(bidValue);
   const tricksTaken = game.tricksTaken[bidWinner];
   
   // Calculate scores
   const roundScores = [0, 0, 0];
   
-  if (tricksTaken >= numericBid) {
-    // Bid winner succeeded
-    roundScores[bidWinner] = tricksTaken;
+  if (game.isBetl) {
+    // Betl scoring: must take 0 tricks
+    if (tricksTaken === 0) {
+      // Betl succeeded: caller gets +7, others get 0
+      roundScores[bidWinner] = 7;
+      // Others get 0
+    } else {
+      // Betl failed: caller gets -7, others get their tricks
+      roundScores[bidWinner] = -7;
+      for (let i = 0; i < 3; i++) {
+        if (i !== bidWinner) {
+          roundScores[i] = game.tricksTaken[i];
+        }
+      }
+    }
   } else {
-    // Bid winner failed
-    roundScores[bidWinner] = -numericBid;
-  }
-  
-  // Other players always score their tricks
-  for (let i = 0; i < 3; i++) {
-    if (i !== bidWinner) {
-      roundScores[i] = game.tricksTaken[i];
+    // Normal scoring
+    const numericBid = bidValue === 'mexico' ? 10 : parseInt(bidValue);
+    
+    if (tricksTaken >= numericBid) {
+      // Bid winner succeeded
+      roundScores[bidWinner] = tricksTaken;
+    } else {
+      // Bid winner failed
+      roundScores[bidWinner] = -numericBid;
+    }
+    
+    // Other players always score their tricks
+    for (let i = 0; i < 3; i++) {
+      if (i !== bidWinner) {
+        roundScores[i] = game.tricksTaken[i];
+      }
     }
   }
   
@@ -356,6 +423,7 @@ function endRound(game) {
     bids: [...game.bids],
     bidWinner: bidWinner,
     trump: game.trump,
+    isBetl: game.isBetl,
     tricksTaken: [...game.tricksTaken],
     roundScores: roundScores,
     totalScores: [...game.scores],
@@ -384,6 +452,7 @@ function startNewRound(game) {
   game.passedPlayers = [false, false, false];
   game.bidWinner = null;
   game.trump = null;
+  game.isBetl = false;
   game.currentTrick = [];
   game.tricksTaken = [0, 0, 0];
   
@@ -423,7 +492,8 @@ function getPlayerGameState(game, playerIndex) {
     currentTrick: game.currentTrick,
     tricksTaken: game.tricksTaken,
     scores: game.scores,
-    gameHistory: game.gameHistory
+    gameHistory: game.gameHistory,
+    lastTrickWinner: game.lastTrickWinner || null
   };
 }
 
@@ -526,6 +596,46 @@ io.on('connection', (socket) => {
     const result = handlePlayCard(game, playerIndex, card);
     if (!result.success) {
       socket.emit('error', { message: result.error });
+    }
+  });
+  
+  socket.on('reset_game', ({ gameId }) => {
+    const game = games.get(gameId);
+    if (!game) return;
+    
+    console.log('Resetting game:', gameId);
+    
+    // Reset scores and history
+    game.scores = [0, 0, 0];
+    game.gameHistory = [];
+    game.currentDealer = 0;
+    
+    // Start new round
+    startNewRound(game);
+  });
+  
+  socket.on('chat_message', ({ gameId, message }) => {
+    const game = games.get(gameId);
+    if (!game) return;
+    
+    const playerIndex = game.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    
+    const playerName = game.players[playerIndex].name;
+    const timestamp = Date.now();
+    
+    // Broadcast chat message to all players in the game
+    for (let i = 0; i < game.players.length; i++) {
+      const player = game.players[i];
+      const playerSocket = playerSockets.get(player.id);
+      if (playerSocket) {
+        playerSocket.emit('chat_message', {
+          playerName,
+          playerIndex,
+          message,
+          timestamp
+        });
+      }
     }
   });
   
