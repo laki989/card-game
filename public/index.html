@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Šnops Card Game</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Lora:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --forest-dark: #1a3a2e;
+      --forest-mid: #2d5f4d;
+      --forest-light: #4a7c59;
+      --parchment: #f4e8d0;
+      --gold: #d4af37;
+      --gold-dark: #b8941e;
+      --red: #8b2e2e;
+      --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    body {
+      font-family: 'Lora', serif;
+      background: linear-gradient(135deg, var(--forest-dark) 0%, var(--forest-mid) 100%);
+      min-height: 100vh;
+      color: var(--parchment);
+      overflow-x: hidden;
+    }
+
+    #root {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .lobby {
+      max-width: 600px;
+      margin: 100px auto;
+      padding: 40px;
+      background: var(--parchment);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px var(--shadow);
+      color: var(--forest-dark);
+    }
+
+    .lobby h1 {
+      font-family: 'Crimson Pro', serif;
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 30px;
+      text-align: center;
+      color: var(--forest-dark);
+      text-shadow: 2px 2px 0 var(--gold);
+    }
+
+    .lobby-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin-top: 30px;
+    }
+
+    .lobby input {
+      width: 100%;
+      padding: 15px;
+      font-size: 1.1rem;
+      border: 3px solid var(--forest-dark);
+      border-radius: 6px;
+      font-family: 'Lora', serif;
+      background: white;
+    }
+
+    .lobby button {
+      width: 100%;
+      padding: 15px 30px;
+      font-size: 1.2rem;
+      font-weight: 600;
+      background: var(--gold);
+      color: var(--forest-dark);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Crimson Pro', serif;
+      transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .lobby button:hover {
+      background: var(--gold-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    .game-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 20px;
+    }
+
+    .game-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 30px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .game-info {
+      display: flex;
+      gap: 40px;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .game-info-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .trump-indicator {
+      display: inline-block;
+      width: 30px;
+      height: 30px;
+      border: 2px solid var(--gold);
+      border-radius: 4px;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .players-area {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 20px;
+      flex: 1;
+      margin-bottom: 20px;
+    }
+
+    .opponent {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .opponent-name {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--gold);
+    }
+
+    .opponent-info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    .card-back {
+      width: 60px;
+      height: 90px;
+      background-image: url('img/back.webp');
+      background-size: cover;
+      background-position: center;
+      border: 2px solid var(--gold);
+      border-radius: 6px;
+      margin: 3px;
+      display: inline-block;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .play-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+    }
+
+    .trick-display {
+      display: flex;
+      gap: 40px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .trick-card-wrapper {
+      position: relative;
+      text-align: center;
+    }
+
+    .trick-player-name {
+      position: absolute;
+      bottom: -25px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.9rem;
+      color: var(--gold);
+      white-space: nowrap;
+    }
+
+    .player-hand-area {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 25px;
+      min-height: 180px;
+    }
+
+    .player-name-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .player-name {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: var(--gold);
+    }
+
+    .player-stats {
+      display: flex;
+      gap: 25px;
+      font-size: 1rem;
+    }
+
+    .hand {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      width: 80px;
+      height: 120px;
+      border: 2px solid var(--forest-dark);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 4px 12px var(--shadow);
+    }
+
+    .card:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 8px 20px var(--shadow);
+    }
+
+    .card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .card.disabled:hover {
+      transform: none;
+    }
+
+    .card-rank {
+      font-size: 1.4rem;
+      font-weight: 700;
+      font-family: 'Crimson Pro', serif;
+    }
+
+    .card-suit {
+      font-size: 2.5rem;
+    }
+
+    .card-suit-small {
+      font-size: 1rem;
+    }
+
+    .bidding-panel {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 30px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .bidding-panel h2 {
+      font-family: 'Crimson Pro', serif;
+      font-size: 2rem;
+      margin-bottom: 20px;
+      color: var(--gold);
+    }
+
+    .bid-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+
+    .bid-button {
+      padding: 12px 24px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: var(--gold);
+      color: var(--forest-dark);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Crimson Pro', serif;
+      transition: all 0.2s;
+    }
+
+    .bid-button:hover:not(:disabled) {
+      background: var(--gold-dark);
+      transform: scale(1.05);
+    }
+
+    .bid-button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .bid-button.pass {
+      background: var(--red);
+      color: white;
+    }
+
+    .talon-display {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 30px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .talon-cards {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+
+    .trump-selection {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    .trump-button {
+      padding: 15px 30px;
+      font-size: 1.5rem;
+      background: white;
+      border: 3px solid var(--forest-dark);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .trump-button:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 16px var(--shadow);
+    }
+
+    .discard-selection {
+      margin-top: 20px;
+    }
+
+    .discard-info {
+      color: var(--gold);
+      font-size: 1.1rem;
+      margin-bottom: 15px;
+    }
+
+    .history-button {
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid var(--gold);
+      color: var(--gold);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Lora', serif;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    .history-button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .modal-content {
+      background: var(--parchment);
+      padding: 40px;
+      border-radius: 12px;
+      max-width: 800px;
+      max-height: 80vh;
+      overflow-y: auto;
+      color: var(--forest-dark);
+    }
+
+    .modal-content h2 {
+      font-family: 'Crimson Pro', serif;
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      color: var(--forest-dark);
+    }
+
+    .history-entry {
+      background: white;
+      padding: 20px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 2px solid var(--forest-dark);
+    }
+
+    .close-button {
+      margin-top: 20px;
+      padding: 12px 30px;
+      background: var(--forest-dark);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Crimson Pro', serif;
+      font-size: 1.1rem;
+    }
+
+    .waiting-message {
+      text-align: center;
+      font-size: 1.5rem;
+      padding: 40px;
+      color: var(--gold);
+    }
+
+    .game-code {
+      background: white;
+      padding: 15px 30px;
+      border-radius: 8px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--forest-dark);
+      margin: 20px 0;
+      text-align: center;
+      letter-spacing: 3px;
+      font-family: 'Crimson Pro', serif;
+    }
+
+    .turn-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      background: var(--gold);
+      border-radius: 50%;
+      margin-left: 8px;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    .current-bid-display {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .bid-list {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    .bid-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .bid-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const SUIT_SYMBOLS = {
+      'acorns': '🌰',
+      'leaves': '🍃',
+      'hearts': '♥️',
+      'bells': '🔔'
+    };
+
+    const SUIT_COLORS = {
+      'acorns': '#8b4513',
+      'leaves': '#228b22',
+      'hearts': '#dc143c',
+      'bells': '#ffd700'
+    };
+
+    const RANK_ORDER = { 'A': 7, 'K': 6, 'Q': 5, 'J': 4, '10': 3, '9': 2, '8': 1, '7': 0 };
+    const SUIT_ORDER = ['hearts', 'bells', 'leaves', 'acorns']; // Red, Yellow, Green, Brown
+
+    function sortHand(hand) {
+      return [...hand].sort((a, b) => {
+        // First sort by suit
+        const suitDiff = SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit);
+        if (suitDiff !== 0) return suitDiff;
+        
+        // Then by rank (Ace first, 7 last)
+        return RANK_ORDER[b.rank] - RANK_ORDER[a.rank];
+      });
+    }
+
+    function getCardImagePath(card) {
+      // Map suit names to image prefixes
+      const suitPrefix = {
+        'hearts': 'H',
+        'bells': 'B',
+        'leaves': 'L',
+        'acorns': 'A'
+      };
+      
+      // Map rank to image suffix
+      const rankSuffix = {
+        'A': 'A',
+        'K': 'K',
+        'Q': 'Q',
+        'J': 'J',
+        '10': '10',
+        '9': '09',
+        '8': '08',
+        '7': '07'
+      };
+      
+      return `img/${suitPrefix[card.suit]}-${rankSuffix[card.rank]}.webp`;
+    }
+
+    function Card({ card, onClick, disabled }) {
+      return (
+        <div 
+          className={`card ${disabled ? 'disabled' : ''}`}
+          onClick={disabled ? undefined : onClick}
+        >
+          <img 
+            src={getCardImagePath(card)} 
+            alt={`${card.rank} of ${card.suit}`}
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'cover',
+              borderRadius: '6px'
+            }}
+          />
+        </div>
+      );
+    }
+
+    function Lobby({ onCreateGame, onJoinGame }) {
+      const [playerName, setPlayerName] = useState('');
+      const [gameCode, setGameCode] = useState('');
+      const [showJoin, setShowJoin] = useState(false);
+
+      return (
+        <div className="lobby">
+          <h1>🃏 Šnops</h1>
+          <input
+            type="text"
+            placeholder="Enter your name"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+          />
+          <div className="lobby-buttons">
+            <button 
+              onClick={() => playerName && onCreateGame(playerName)}
+              disabled={!playerName}
+            >
+              Create New Game
+            </button>
+            <button onClick={() => setShowJoin(!showJoin)}>
+              {showJoin ? 'Cancel' : 'Join Existing Game'}
+            </button>
+            {showJoin && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Enter game code"
+                  value={gameCode}
+                  onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                />
+                <button 
+                  onClick={() => playerName && gameCode && onJoinGame(gameCode, playerName)}
+                  disabled={!playerName || !gameCode}
+                >
+                  Join Game
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function GameHistory({ history, players, onClose }) {
+      return (
+        <div className="modal" onClick={onClose}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Game History</h2>
+            {history.length === 0 ? (
+              <p>No rounds played yet.</p>
+            ) : (
+              history.map((round, idx) => (
+                <div key={idx} className="history-entry">
+                  <h3>Round {idx + 1}</h3>
+                  <p><strong>Dealer:</strong> {players[round.dealer]?.name}</p>
+                  <p><strong>Winner:</strong> {players[round.bidWinner]?.name} (bid: {round.bids[round.bidWinner]})</p>
+                  <p><strong>Trump:</strong> {round.trump ? SUIT_SYMBOLS[round.trump] : 'None (Mexico)'}</p>
+                  <p><strong>Tricks Taken:</strong> {round.tricksTaken.map((t, i) => 
+                    `${players[i]?.name}: ${t}`
+                  ).join(', ')}</p>
+                  <p><strong>Round Scores:</strong> {round.roundScores.map((s, i) => 
+                    `${players[i]?.name}: ${s > 0 ? '+' : ''}${s}`
+                  ).join(', ')}</p>
+                  <p><strong>Total Scores:</strong> {round.totalScores.map((s, i) => 
+                    `${players[i]?.name}: ${s}`
+                  ).join(', ')}</p>
+                </div>
+              ))
+            )}
+            <button className="close-button" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      );
+    }
+
+    function Game() {
+      const [socket, setSocket] = useState(null);
+      const [gameState, setGameState] = useState(null);
+      const [playerIndex, setPlayerIndex] = useState(null);
+      const [gameCode, setGameCode] = useState(null);
+      const [error, setError] = useState(null);
+      const [selectedDiscards, setSelectedDiscards] = useState([]);
+      const [showHistory, setShowHistory] = useState(false);
+
+      const socketRef = useRef(null);
+
+      useEffect(() => {
+        // Prevent duplicate connections
+        if (socketRef.current) {
+          console.log('Socket already exists, skipping initialization');
+          return;
+        }
+
+        console.log('Initializing socket connection...');
+        const newSocket = io(); // Connect to same origin
+        socketRef.current = newSocket;
+        setSocket(newSocket);
+
+        newSocket.on('connect', () => {
+          console.log('Connected to server, socket ID:', newSocket.id);
+        });
+
+        newSocket.on('game_created', ({ gameId, playerIndex: pIdx }) => {
+          console.log('Game created:', gameId, 'Player index:', pIdx);
+          setGameCode(gameId);
+          setPlayerIndex(pIdx);
+        });
+
+        newSocket.on('game_joined', ({ gameId, playerIndex: pIdx }) => {
+          console.log('Game joined:', gameId, 'Player index:', pIdx);
+          setGameCode(gameId);
+          setPlayerIndex(pIdx);
+        });
+
+        newSocket.on('game_state', (state) => {
+          console.log('Game state updated:', state);
+          setGameState(state);
+          setSelectedDiscards([]);
+        });
+
+        newSocket.on('error', ({ message }) => {
+          console.error('Game error:', message);
+          setError(message);
+          setTimeout(() => setError(null), 3000);
+        });
+
+        newSocket.on('player_left', ({ playerIndex }) => {
+          console.log('Player left:', playerIndex);
+          alert(`Player ${playerIndex + 1} left the game`);
+        });
+
+        newSocket.on('disconnect', (reason) => {
+          console.log('Disconnected from server. Reason:', reason);
+        });
+
+        newSocket.on('connect_error', (error) => {
+          console.error('Connection error:', error);
+        });
+
+        // Only cleanup on component unmount, not on re-renders
+        return () => {
+          console.log('Component unmounting, cleaning up socket connection');
+          if (socketRef.current) {
+            socketRef.current.close();
+            socketRef.current = null;
+          }
+        };
+      }, []); // Empty dependency array - only run once
+
+      const handleCreateGame = (playerName) => {
+        socket.emit('create_game', { playerName });
+      };
+
+      const handleJoinGame = (gameId, playerName) => {
+        socket.emit('join_game', { gameId, playerName });
+      };
+
+      const handleBid = (bid) => {
+        socket.emit('bid', { gameId: gameCode, bid });
+      };
+
+      const handlePlayCard = (card) => {
+        if (gameState.state !== 'playing') return;
+        if (gameState.currentPlayer !== playerIndex) return;
+        
+        socket.emit('play_card', { gameId: gameCode, card });
+      };
+
+      const handleTalonTake = () => {
+        if (selectedDiscards.length !== 2) {
+          setError('Please select exactly 2 cards to discard');
+          setTimeout(() => setError(null), 3000);
+          return;
+        }
+        socket.emit('take_talon', { gameId: gameCode, discards: selectedDiscards });
+      };
+
+      const handleSelectTrump = (trump) => {
+        socket.emit('select_trump', { gameId: gameCode, trump });
+      };
+
+      const toggleDiscard = (card) => {
+        const cardStr = `${card.suit}-${card.rank}`;
+        const existing = selectedDiscards.find(c => `${c.suit}-${c.rank}` === cardStr);
+        
+        if (existing) {
+          setSelectedDiscards(selectedDiscards.filter(c => `${c.suit}-${c.rank}` !== cardStr));
+        } else if (selectedDiscards.length < 2) {
+          setSelectedDiscards([...selectedDiscards, card]);
+        }
+      };
+
+      if (!gameState) {
+        return <Lobby onCreateGame={handleCreateGame} onJoinGame={handleJoinGame} />;
+      }
+
+      if (gameState.state === 'waiting') {
+        return (
+          <div className="lobby">
+            <h1>🃏 Šnops</h1>
+            <div className="game-code">Game Code: {gameCode}</div>
+            <div className="waiting-message">
+              Waiting for players... ({gameState.players.length}/3)
+              <br/><br/>
+              {gameState.players.map((p, i) => (
+                <div key={i}>{i + 1}. {p.name}</div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      // Safety checks
+      if (!gameState.players || gameState.players.length === 0) {
+        return <div className="waiting-message">Loading game...</div>;
+      }
+
+      if (playerIndex === null || playerIndex === undefined) {
+        return <div className="waiting-message">Connecting...</div>;
+      }
+
+      if (gameState.players.length < 3) {
+        return <div className="waiting-message">Waiting for all players...</div>;
+      }
+
+      // Ensure all required arrays exist
+      if (!gameState.bids || !gameState.tricksTaken || !gameState.scores || !gameState.passedPlayers) {
+        console.warn('Game state missing required arrays:', gameState);
+        return <div className="waiting-message">Loading game data...</div>;
+      }
+
+      const currentPlayer = gameState.players[playerIndex];
+      const otherPlayers = gameState.players.filter((_, i) => i !== playerIndex);
+      
+      if (!currentPlayer || otherPlayers.length !== 2) {
+        return <div className="waiting-message">Loading players...</div>;
+      }
+
+      const isMyTurn = gameState.currentPlayer === playerIndex;
+      const currentHighestBid = Math.max(...gameState.bids.filter(b => b !== null && b !== 'pass').map(b => b === 'mexico' ? 20 : parseInt(b)), 0);
+
+      console.log('Rendering game. State:', gameState.state, 'Player:', playerIndex, 'My turn:', isMyTurn);
+
+      return (
+        <div className="game-container">
+          {error && (
+            <div style={{
+              position: 'fixed',
+              top: '20px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--red)',
+              color: 'white',
+              padding: '15px 30px',
+              borderRadius: '8px',
+              zIndex: 1000,
+              fontWeight: 600
+            }}>
+              {error}
+            </div>
+          )}
+
+          {showHistory && (
+            <GameHistory 
+              history={gameState.gameHistory} 
+              players={gameState.players}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
+
+          <div className="game-header">
+            <div className="game-info">
+              <div className="game-info-item">
+                <span>Game: {gameCode}</span>
+              </div>
+              {gameState.trump && (
+                <div className="game-info-item">
+                  <span>Trump:</span>
+                  <div className="trump-indicator">
+                    {SUIT_SYMBOLS[gameState.trump]}
+                  </div>
+                </div>
+              )}
+              {gameState.bidWinner !== null && (
+                <div className="game-info-item">
+                  <span>Contract: {gameState.bids[gameState.bidWinner]} by {gameState.players[gameState.bidWinner]?.name}</span>
+                </div>
+              )}
+            </div>
+            <button className="history-button" onClick={() => setShowHistory(true)}>
+              View History
+            </button>
+          </div>
+
+          <div className="players-area">
+            {/* Left opponent */}
+            <div className="opponent">
+              <div className="opponent-name">
+                {otherPlayers[0]?.name || 'Player 2'}
+                {otherPlayers[0] && gameState.currentPlayer === gameState.players.findIndex(p => p.id === otherPlayers[0].id) && (
+                  <span className="turn-indicator"></span>
+                )}
+              </div>
+              <div>
+                {[...Array(gameState.hand ? gameState.hand.length : 10)].map((_, i) => (
+                  <div key={i} className="card-back"></div>
+                ))}
+              </div>
+              <div className="opponent-info">
+                <div>Score: {otherPlayers[0] ? gameState.scores[gameState.players.findIndex(p => p.id === otherPlayers[0].id)] : 0}</div>
+                <div>Tricks: {otherPlayers[0] ? gameState.tricksTaken[gameState.players.findIndex(p => p.id === otherPlayers[0].id)] : 0}</div>
+              </div>
+            </div>
+
+            {/* Center play area */}
+            <div className="play-area">
+              {gameState.state === 'bidding' && (
+                <div className="bidding-panel">
+                  <h2>Bidding Phase</h2>
+                  {gameState.bids.some(b => b !== null) && (
+                    <div className="current-bid-display">
+                      <div>Current Bids:</div>
+                      <div className="bid-list">
+                        {gameState.players.map((player, idx) => (
+                          <div key={idx} className="bid-item">
+                            <div>{player.name}</div>
+                            <div className="bid-value">
+                              {gameState.bids[idx] === null ? '—' : gameState.bids[idx]}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {isMyTurn && !gameState.passedPlayers[playerIndex] ? (
+                    <div className="bid-buttons">
+                      {[5, 6, 7, 8, 9, 10, 'mexico'].map(bid => {
+                        const numericBid = bid === 'mexico' ? 20 : bid;
+                        const disabled = numericBid <= currentHighestBid;
+                        return (
+                          <button
+                            key={bid}
+                            className="bid-button"
+                            onClick={() => handleBid(bid)}
+                            disabled={disabled}
+                          >
+                            {bid === 'mexico' ? 'Mexico (20)' : bid}
+                          </button>
+                        );
+                      })}
+                      <button className="bid-button pass" onClick={() => handleBid('pass')}>
+                        Pass
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '20px', fontSize: '1.2rem' }}>
+                      {gameState.passedPlayers[playerIndex] ? 
+                        'You passed' : 
+                        `Waiting for ${gameState.players[gameState.currentPlayer]?.name}...`
+                      }
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {gameState.state === 'talon_reveal' && (
+                <div className="talon-display">
+                  <h2>Talon Cards</h2>
+                  <div className="talon-cards">
+                    {gameState.talon.map((card, idx) => (
+                      <Card key={idx} card={card} disabled={true} />
+                    ))}
+                  </div>
+                  {playerIndex === gameState.bidWinner ? (
+                    <div className="discard-selection">
+                      <div className="discard-info">
+                        The 2 talon cards above have been added to your hand below
+                        <br/>
+                        Select any 2 cards to discard ({selectedDiscards.length}/2 selected)
+                      </div>
+                      <button 
+                        className="bid-button" 
+                        onClick={handleTalonTake}
+                        disabled={selectedDiscards.length !== 2}
+                      >
+                        Confirm Discards
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '20px', fontSize: '1.2rem' }}>
+                      Waiting for {gameState.players[gameState.bidWinner]?.name} to discard...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {gameState.state === 'trump_selection' && (
+                <div className="talon-display">
+                  <h2>Select Trump Suit</h2>
+                  {playerIndex === gameState.bidWinner ? (
+                    <div className="trump-selection">
+                      {Object.entries(SUIT_SYMBOLS).map(([suit, symbol]) => (
+                        <button
+                          key={suit}
+                          className="trump-button"
+                          onClick={() => handleSelectTrump(suit)}
+                        >
+                          {symbol}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '20px', fontSize: '1.2rem' }}>
+                      Waiting for {gameState.players[gameState.bidWinner]?.name} to select trump...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {gameState.state === 'playing' && (
+                <div className="trick-display">
+                  {gameState.currentTrick.map((play, idx) => (
+                    <div key={idx} className="trick-card-wrapper">
+                      <Card card={play.card} disabled={true} />
+                      <div className="trick-player-name">
+                        {gameState.players[play.playerIndex]?.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {gameState.state === 'finished' && (
+                <div className="bidding-panel">
+                  <h2>Game Over!</h2>
+                  <div style={{ fontSize: '1.5rem', marginTop: '20px' }}>
+                    {gameState.scores.map((score, idx) => (
+                      <div key={idx} style={{ margin: '10px 0' }}>
+                        {gameState.players[idx]?.name}: {score} points
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '1.8rem', marginTop: '30px', color: 'var(--gold)' }}>
+                    Winner: {gameState.players[gameState.scores.indexOf(Math.max(...gameState.scores))]?.name}!
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right opponent */}
+            <div className="opponent">
+              <div className="opponent-name">
+                {otherPlayers[1]?.name || 'Player 3'}
+                {otherPlayers[1] && gameState.currentPlayer === gameState.players.findIndex(p => p.id === otherPlayers[1].id) && (
+                  <span className="turn-indicator"></span>
+                )}
+              </div>
+              <div>
+                {[...Array(gameState.hand ? gameState.hand.length : 10)].map((_, i) => (
+                  <div key={i} className="card-back"></div>
+                ))}
+              </div>
+              <div className="opponent-info">
+                <div>Score: {otherPlayers[1] ? gameState.scores[gameState.players.findIndex(p => p.id === otherPlayers[1].id)] : 0}</div>
+                <div>Tricks: {otherPlayers[1] ? gameState.tricksTaken[gameState.players.findIndex(p => p.id === otherPlayers[1].id)] : 0}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Player's hand */}
+          <div className="player-hand-area">
+            <div className="player-name-bar">
+              <div className="player-name">
+                {currentPlayer?.name}
+                {isMyTurn && <span className="turn-indicator"></span>}
+              </div>
+              <div className="player-stats">
+                <div>Score: {gameState.scores[playerIndex]}</div>
+                <div>Tricks: {gameState.tricksTaken[playerIndex]}</div>
+              </div>
+            </div>
+            <div className="hand">
+              {sortHand(gameState.hand).map((card, idx) => {
+                const cardKey = `${card.suit}-${card.rank}`;
+                const isSelected = selectedDiscards.some(c => `${c.suit}-${c.rank}` === cardKey);
+                const canPlay = gameState.state === 'playing' && isMyTurn;
+                const isDiscarding = gameState.state === 'talon_reveal' && playerIndex === gameState.bidWinner;
+                
+                return (
+                  <div 
+                    key={idx} 
+                    style={{ 
+                      position: 'relative',
+                      transform: isSelected ? 'translateY(-15px)' : 'none',
+                      transition: 'transform 0.2s'
+                    }}
+                  >
+                    <Card 
+                      card={card} 
+                      onClick={() => {
+                        if (canPlay) handlePlayCard(card);
+                        else if (isDiscarding) toggleDiscard(card);
+                      }}
+                      disabled={!canPlay && !isDiscarding}
+                    />
+                    {isSelected && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-10px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: 'var(--red)',
+                        color: 'white',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.8rem',
+                        fontWeight: 'bold'
+                      }}>
+                        Discard
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<Game />, document.getElementById('root'));
+  </script>
+</body>
+</html>
