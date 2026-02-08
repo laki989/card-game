@@ -1,4 +1,4 @@
-# Šnops Card Game - Online Multiplayer
+# Card Game - Online Multiplayer
 
 A real-time multiplayer card game for 3 players, built with Node.js, WebSockets, and React.
 
@@ -202,6 +202,3 @@ const PORT = process.env.PORT || 3001;
 MIT
 
 ## Credits
-
-Game rules: Traditional Serbian card game "Šnops"
-Built for educational and entertainment purposes
