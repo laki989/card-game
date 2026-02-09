@@ -112,7 +112,7 @@ function GameHistory({ history, players, onClose }) {
 function Chat({ socket, gameCode, playerIndex }) {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(true); // Start minimized
   const messagesEndRef = useRef(null);
 
   useEffect(() => {

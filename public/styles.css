@@ -21,7 +21,8 @@ body {
   background: #1a1a1a;
   min-height: 100vh;
   color: var(--parchment);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #root {
@@ -33,7 +34,7 @@ body {
 /* Lobby Styles */
 .lobby {
   max-width: 600px;
-  margin: 100px auto;
+  margin: 100px auto 50px auto;
   padding: 40px;
   background: var(--parchment);
   border-radius: 12px;
