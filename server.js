@@ -9,7 +9,10 @@ const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling']
 });
 
 // Serve static files
@@ -71,6 +74,7 @@ function dealCards(deck) {
 function createGame(gameId) {
   return {
     id: gameId,
+    gameType: 'mexico',
     players: [],
     state: 'waiting', // waiting, bidding, playing, finished
     deck: [],
@@ -476,42 +480,91 @@ function getPlayerGameState(game, playerIndex) {
     playerHand = [...playerHand, ...game.talon];
   }
   
-  return {
+  // Base state for all games
+  const baseState = {
     gameId: game.id,
+    gameType: game.gameType,
     players: game.players.map(p => ({ name: p.name, id: p.id })),
     playerIndex: playerIndex,
     state: game.state,
     currentDealer: game.currentDealer,
     currentPlayer: game.currentPlayer,
     hand: playerHand,
-    talon: game.state === 'talon_reveal' || game.state === 'trump_selection' ? game.talon : null,
-    bids: game.bids,
-    passedPlayers: game.passedPlayers,
-    bidWinner: game.bidWinner,
-    trump: game.trump,
-    currentTrick: game.currentTrick,
-    tricksTaken: game.tricksTaken,
-    scores: game.scores,
-    gameHistory: game.gameHistory,
-    lastTrickWinner: game.lastTrickWinner || null
+    scores: game.scores
   };
+  
+  // Add game-specific data
+  if (game.gameType === 'lorum') {
+    // Lorum-specific data
+    return {
+      ...baseState,
+      currentDeal: game.currentDeal,
+      currentContract: game.currentContract,
+      contractMode: game.contractMode,
+      contractSelector: game.contractSelector,
+      usedContracts: game.usedContracts,
+      currentTrick: game.currentTrick,
+      tricksTaken: game.tricksTaken,
+      queensTaken: game.queensTaken,
+      heartsTaken: game.heartsTaken,
+      hasJackOfClubs: game.hasJackOfClubs,
+      hasKingOfHearts: game.hasKingOfHearts,
+      lastTrickWinner: game.lastTrickWinner,
+      runningScores: game.runningScores || [0, 0, 0, 0],
+      loraLayout: game.loraLayout,
+      loraStartRank: game.loraStartRank,
+      loraPasses: game.loraPasses,
+      contractScores: game.contractScores,
+      gameHistory: game.gameHistory,
+      handCounts: game.hands.map(h => h.length) // Card counts for display
+    };
+  } else {
+    // Mexico-specific data
+    return {
+      ...baseState,
+      talon: game.state === 'talon_reveal' || game.state === 'trump_selection' ? game.talon : null,
+      bids: game.bids,
+      passedPlayers: game.passedPlayers,
+      bidWinner: game.bidWinner,
+      trump: game.trump,
+      currentTrick: game.currentTrick,
+      tricksTaken: game.tricksTaken,
+      gameHistory: game.gameHistory,
+      lastTrickWinner: game.lastTrickWinner || null
+    };
+  }
 }
 
 // Socket.IO event handlers
 io.on('connection', (socket) => {
-  console.log('Player connected:', socket.id);
+  console.log('✅ Player connected:', socket.id);
+  console.log('📊 Active connections:', io.sockets.sockets.size);
   
-  socket.on('create_game', ({ playerName }) => {
-    console.log('Creating game for player:', playerName, 'Socket:', socket.id);
+  // Acknowledge connection
+  socket.emit('connection_ack', { message: 'Connected successfully', socketId: socket.id });
+  
+  socket.on('create_game', ({ playerName, gameConfig }) => {
+    console.log('Creating game for player:', playerName, 'Config:', gameConfig);
     const gameId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const game = createGame(gameId);
+    
+    // Determine game type (default to mexico for backward compatibility)
+    const gameType = gameConfig?.gameType || 'mexico';
+    
+    let game;
+    if (gameType === 'lorum') {
+      const lorumGame = require('./lorumGame');
+      game = lorumGame.createLorumGame(gameId, gameConfig.contractMode || 'fixed');
+    } else {
+      game = createGame(gameId);
+    }
+    
     game.players.push({ id: socket.id, name: playerName });
     games.set(gameId, game);
     playerSockets.set(socket.id, socket);
     
     socket.join(gameId);
-    console.log('Game created:', gameId);
-    socket.emit('game_created', { gameId, playerIndex: 0 });
+    console.log('Game created:', gameId, 'Type:', gameType);
+    socket.emit('game_created', { gameId, playerIndex: 0, gameType });
     socket.emit('game_state', getPlayerGameState(game, 0));
   });
   
@@ -524,7 +577,9 @@ io.on('connection', (socket) => {
       return;
     }
     
-    if (game.players.length >= 3) {
+    // Check player limit based on game type
+    const maxPlayers = game.gameType === 'lorum' ? 4 : 3;
+    if (game.players.length >= maxPlayers) {
       console.log('Game is full:', gameId);
       socket.emit('error', { message: 'Game is full' });
       return;
@@ -536,12 +591,18 @@ io.on('connection', (socket) => {
     
     socket.join(gameId);
     console.log('Player joined game:', gameId, 'Player count:', game.players.length);
-    socket.emit('game_joined', { gameId, playerIndex });
+    socket.emit('game_joined', { gameId, playerIndex, gameType: game.gameType });
     
     // If game is now full, start the game
-    if (game.players.length === 3) {
+    if (game.players.length === maxPlayers) {
       console.log('Game full, starting round:', gameId);
-      startNewRound(game);
+      if (game.gameType === 'lorum') {
+        const lorumGame = require('./lorumGame');
+        lorumGame.startLorumDeal(game);
+        broadcastGameState(game);
+      } else {
+        startNewRound(game);
+      }
     } else {
       broadcastGameState(game);
     }
@@ -603,15 +664,27 @@ io.on('connection', (socket) => {
     const game = games.get(gameId);
     if (!game) return;
     
-    console.log('Resetting game:', gameId);
+    console.log('Resetting game:', gameId, 'Type:', game.gameType);
     
-    // Reset scores and history
-    game.scores = [0, 0, 0];
-    game.gameHistory = [];
-    game.currentDealer = 0;
-    
-    // Start new round
-    startNewRound(game);
+    if (game.gameType === 'lorum') {
+      // Reset Lorum game
+      game.scores = [0, 0, 0, 0];
+      game.gameHistory = [];
+      game.contractScores = [];
+      game.currentDeal = 0;
+      game.currentDealer = 0;
+      game.usedContracts = [false, false, false, false, false, false, false];
+      
+      const lorumGame = require('./lorumGame');
+      lorumGame.startLorumDeal(game);
+    } else {
+      // Reset Mexico game
+      game.scores = [0, 0, 0];
+      game.gameHistory = [];
+      game.currentDealer = 0;
+      
+      startNewRound(game);
+    }
   });
   
   socket.on('chat_message', ({ gameId, message }) => {
@@ -636,6 +709,83 @@ io.on('connection', (socket) => {
           timestamp
         });
       }
+    }
+  });
+  
+  // Lorum-specific events
+  socket.on('select_contract', ({ gameId, contractId }) => {
+    const game = games.get(gameId);
+    if (!game || game.gameType !== 'lorum') return;
+    
+    const playerIndex = game.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    if (playerIndex !== game.contractSelector) {
+      socket.emit('error', { message: 'Only first player can select contract' });
+      return;
+    }
+    
+    const lorumGame = require('./lorumGame');
+    const result = lorumGame.selectContract(game, contractId);
+    if (!result.success) {
+      socket.emit('error', { message: result.error });
+    } else {
+      broadcastGameState(game);
+    }
+  });
+  
+  socket.on('play_lorum_card', ({ gameId, card }) => {
+    const game = games.get(gameId);
+    if (!game || game.gameType !== 'lorum') return;
+    
+    const playerIndex = game.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    
+    const lorumGame = require('./lorumGame');
+    const result = lorumGame.playLorumCard(game, playerIndex, card);
+    if (!result.success) {
+      socket.emit('error', { message: result.error });
+    } else {
+      broadcastGameState(game);
+      
+      // If trick is complete, wait 3 seconds before continuing
+      if (result.needsDelay) {
+        setTimeout(() => {
+          lorumGame.continueLorumAfterTrick(game);
+          broadcastGameState(game);
+        }, 3000);
+      }
+    }
+  });
+  
+  socket.on('play_lora_card', ({ gameId, card }) => {
+    const game = games.get(gameId);
+    if (!game || game.gameType !== 'lorum') return;
+    
+    const playerIndex = game.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    
+    const lorumGame = require('./lorumGame');
+    const result = lorumGame.playLoraCard(game, playerIndex, card);
+    if (!result.success) {
+      socket.emit('error', { message: result.error });
+    } else {
+      broadcastGameState(game);
+    }
+  });
+  
+  socket.on('pass_lora', ({ gameId }) => {
+    const game = games.get(gameId);
+    if (!game || game.gameType !== 'lorum') return;
+    
+    const playerIndex = game.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) return;
+    
+    const lorumGame = require('./lorumGame');
+    const result = lorumGame.passLoraPlay(game, playerIndex);
+    if (!result.success) {
+      socket.emit('error', { message: result.error });
+    } else {
+      broadcastGameState(game);
     }
   });
   

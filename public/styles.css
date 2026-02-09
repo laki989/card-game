@@ -830,3 +830,77 @@ body {
 .chat-messages::-webkit-scrollbar-thumb:hover {
   background: var(--gold-dark);
 }
+
+/* Lora/Ređanje Layout */
+.lora-layout {
+  background: rgba(0, 0, 0, 0.85);
+  padding: 30px;
+  border-radius: 12px;
+  border: 3px solid var(--gold);
+  min-width: 700px;
+}
+
+.lora-columns {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.lora-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.lora-suit-header {
+  font-size: 2rem;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.lora-cards {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 200px;
+  position: relative;
+}
+
+.lora-empty-slot {
+  width: 70px;
+  height: 105px;
+  border: 2px dashed rgba(212, 175, 55, 0.3);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(212, 175, 55, 0.5);
+  font-size: 0.8rem;
+}
+
+/* Lorum Scoreboard */
+.lorum-scoreboard {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid var(--gold);
+  border-radius: 8px;
+  padding: 15px;
+  min-width: 200px;
+  z-index: 400;
+  color: var(--parchment);
+  font-family: 'Lora', serif;
+}
+
+/* 4-player top position */
+.player-position.top {
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+}
