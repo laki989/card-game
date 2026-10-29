@@ -16,7 +16,10 @@ const io = new Server(server, {
 });
 
 // Serve static files
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// How long a finished trick stays on the table (ms)
+const TRICK_DELAY = Number(process.env.TRICK_DELAY_MS) || 3000;
 
 // Game state
 const games = new Map();
@@ -76,7 +79,7 @@ function createGame(gameId) {
     id: gameId,
     gameType: 'mexico',
     players: [],
-    state: 'waiting', // waiting, bidding, playing, finished
+    state: 'lobby', // lobby, bidding, talon_reveal, trump_selection, playing, trick_complete, finished, abandoned
     deck: [],
     hands: [[], [], []],
     talon: [],
@@ -217,27 +220,26 @@ function handleTalonTake(game, playerIndex, discards) {
   if (game.state !== 'talon_reveal') return { success: false, error: 'Not in talon phase' };
   if (playerIndex !== game.bidWinner) return { success: false, error: 'Only bid winner can take talon' };
   
-  // Must discard exactly 2 cards (can be talon cards or original cards)
-  if (discards.length !== 2) return { success: false, error: 'Must discard exactly 2 cards' };
-  
-  // Add talon to winner's hand permanently (they already saw it in their hand)
-  game.hands[playerIndex].push(...game.talon);
-  
-  // Remove the 2 discarded cards
-  for (const card of discards) {
-    const index = game.hands[playerIndex].findIndex(c => 
-      c.suit === card.suit && c.rank === card.rank
-    );
-    if (index === -1) return { success: false, error: 'Invalid discard - card not in hand' };
-    game.hands[playerIndex].splice(index, 1);
+  // Must discard exactly 2 different cards (can be talon cards or original cards)
+  if (!Array.isArray(discards) || discards.length !== 2) return { success: false, error: 'Must discard exactly 2 cards' };
+  if (discards[0].suit === discards[1].suit && discards[0].rank === discards[1].rank) {
+    return { success: false, error: 'Pick 2 different cards' };
   }
-  
-  // Should now have exactly 10 cards
-  if (game.hands[playerIndex].length !== 10) {
-    console.error(`Player ${playerIndex} has ${game.hands[playerIndex].length} cards after talon, expected 10`);
+
+  // Work on a copy so a rejected request leaves the hand untouched
+  const newHand = [...game.hands[playerIndex], ...game.talon];
+  for (const card of discards) {
+    const index = newHand.findIndex(c => c.suit === card.suit && c.rank === card.rank);
+    if (index === -1) return { success: false, error: 'Invalid discard - card not in hand' };
+    newHand.splice(index, 1);
+  }
+  if (newHand.length !== 10) {
+    console.error(`Player ${playerIndex} would have ${newHand.length} cards after talon, expected 10`);
     return { success: false, error: 'Error: incorrect number of cards after discard' };
   }
-  
+
+  game.hands[playerIndex] = newHand;
+  game.talon = [];
   game.state = 'trump_selection';
   broadcastGameState(game);
   return { success: true };
@@ -363,7 +365,7 @@ function handlePlayCard(game, playerIndex, card) {
         game.lastTrickWinner = null;
         broadcastGameState(game);
       }
-    }, 3000);
+    }, TRICK_DELAY);
   } else {
     // Move to next player
     game.currentPlayer = (game.currentPlayer + 1) % 3;
@@ -484,8 +486,12 @@ function getPlayerGameState(game, playerIndex) {
   const baseState = {
     gameId: game.id,
     gameType: game.gameType,
-    players: game.players.map(p => ({ name: p.name, id: p.id })),
+    players: game.players.map(p => ({ name: p.name, id: p.id, ready: !!p.ready })),
     playerIndex: playerIndex,
+    hostIndex: 0,
+    maxPlayers: maxPlayersFor(game),
+    leftPlayer: game.leftPlayer || null,
+    handCounts: game.hands.map(h => h.length),
     state: game.state,
     currentDealer: game.currentDealer,
     currentPlayer: game.currentPlayer,
@@ -509,14 +515,13 @@ function getPlayerGameState(game, playerIndex) {
       heartsTaken: game.heartsTaken,
       hasJackOfClubs: game.hasJackOfClubs,
       hasKingOfHearts: game.hasKingOfHearts,
-      lastTrickWinner: game.lastTrickWinner,
+      lastTrickWinner: game.lastTrickWinner ?? null,
       runningScores: game.runningScores || [0, 0, 0, 0],
       loraLayout: game.loraLayout,
       loraStartRank: game.loraStartRank,
       loraPasses: game.loraPasses,
       contractScores: game.contractScores,
-      gameHistory: game.gameHistory,
-      handCounts: game.hands.map(h => h.length) // Card counts for display
+      gameHistory: game.gameHistory
     };
   } else {
     // Mexico-specific data
@@ -530,8 +535,57 @@ function getPlayerGameState(game, playerIndex) {
       currentTrick: game.currentTrick,
       tricksTaken: game.tricksTaken,
       gameHistory: game.gameHistory,
-      lastTrickWinner: game.lastTrickWinner || null
+      lastTrickWinner: game.lastTrickWinner ?? null
     };
+  }
+}
+
+
+function maxPlayersFor(game) {
+  return game.gameType === 'lorum' ? 4 : 3;
+}
+
+function playerIndexOf(game, socketId) {
+  return game.players.findIndex(p => p.id === socketId);
+}
+
+// Remove a player from a game. In the lobby their seat simply frees up
+// (the next player becomes host if the host left). Once cards are dealt,
+// the table can't continue, so it's closed for everyone.
+function removePlayer(game, socketId) {
+  const idx = playerIndexOf(game, socketId);
+  if (idx === -1) return;
+  const name = game.players[idx].name;
+  const sock = playerSockets.get(socketId);
+  if (sock) sock.leave(game.id);
+
+  if (game.state === 'lobby') {
+    game.players.splice(idx, 1);
+    // Anyone who was ready stays ready; the host never needs to be
+    if (game.players[0]) game.players[0].ready = true;
+    if (game.players.length === 0) {
+      games.delete(game.id);
+      console.log('Lobby closed (empty):', game.id);
+      return;
+    }
+    broadcastGameState(game);
+  } else if (game.state !== 'abandoned') {
+    game.players.splice(idx, 1);
+    game.state = 'abandoned';
+    game.leftPlayer = name;
+    broadcastGameState(game);
+    games.delete(game.id);
+    console.log('Game closed, player left mid-game:', game.id, name);
+  }
+}
+
+function startGame(game) {
+  if (game.gameType === 'lorum') {
+    const lorumGame = require('./lorumGame');
+    lorumGame.startLorumDeal(game);
+    broadcastGameState(game);
+  } else {
+    startNewRound(game);
   }
 }
 
@@ -558,7 +612,7 @@ io.on('connection', (socket) => {
       game = createGame(gameId);
     }
     
-    game.players.push({ id: socket.id, name: playerName });
+    game.players.push({ id: socket.id, name: playerName, ready: true });
     games.set(gameId, game);
     playerSockets.set(socket.id, socket);
     
@@ -569,45 +623,64 @@ io.on('connection', (socket) => {
   });
   
   socket.on('join_game', ({ gameId, playerName }) => {
-    console.log('Player joining game:', playerName, 'Game:', gameId, 'Socket:', socket.id);
-    const game = games.get(gameId);
+    const code = (gameId || '').trim().toUpperCase();
+    const game = games.get(code);
     if (!game) {
-      console.log('Game not found:', gameId);
-      socket.emit('error', { message: 'Game not found' });
+      socket.emit('error', { message: 'No table with that code' });
       return;
     }
-    
-    // Check player limit based on game type
-    const maxPlayers = game.gameType === 'lorum' ? 4 : 3;
-    if (game.players.length >= maxPlayers) {
-      console.log('Game is full:', gameId);
-      socket.emit('error', { message: 'Game is full' });
+    if (game.state !== 'lobby') {
+      socket.emit('error', { message: 'That game has already started' });
       return;
     }
-    
+    if (game.players.length >= maxPlayersFor(game)) {
+      socket.emit('error', { message: 'That table is full' });
+      return;
+    }
+    if (playerIndexOf(game, socket.id) !== -1) return;
+
     const playerIndex = game.players.length;
-    game.players.push({ id: socket.id, name: playerName });
+    game.players.push({ id: socket.id, name: playerName, ready: false });
     playerSockets.set(socket.id, socket);
-    
-    socket.join(gameId);
-    console.log('Player joined game:', gameId, 'Player count:', game.players.length);
-    socket.emit('game_joined', { gameId, playerIndex, gameType: game.gameType });
-    
-    // If game is now full, start the game
-    if (game.players.length === maxPlayers) {
-      console.log('Game full, starting round:', gameId);
-      if (game.gameType === 'lorum') {
-        const lorumGame = require('./lorumGame');
-        lorumGame.startLorumDeal(game);
-        broadcastGameState(game);
-      } else {
-        startNewRound(game);
-      }
-    } else {
-      broadcastGameState(game);
-    }
+    socket.join(code);
+    console.log('Player joined lobby:', code, playerName, `${game.players.length}/${maxPlayersFor(game)}`);
+    socket.emit('game_joined', { gameId: code, playerIndex, gameType: game.gameType });
+    broadcastGameState(game);
   });
-  
+
+  socket.on('set_ready', ({ gameId, ready }) => {
+    const game = games.get(gameId);
+    if (!game || game.state !== 'lobby') return;
+    const idx = playerIndexOf(game, socket.id);
+    if (idx <= 0) return; // host is always ready
+    game.players[idx].ready = !!ready;
+    broadcastGameState(game);
+  });
+
+  socket.on('start_game', ({ gameId }) => {
+    const game = games.get(gameId);
+    if (!game || game.state !== 'lobby') return;
+    if (playerIndexOf(game, socket.id) !== 0) {
+      socket.emit('error', { message: 'Only the host can start the game' });
+      return;
+    }
+    if (game.players.length < maxPlayersFor(game)) {
+      socket.emit('error', { message: `Waiting for ${maxPlayersFor(game) - game.players.length} more player(s)` });
+      return;
+    }
+    if (!game.players.every(p => p.ready)) {
+      socket.emit('error', { message: 'Not everyone is ready yet' });
+      return;
+    }
+    console.log('Host started game:', gameId);
+    startGame(game);
+  });
+
+  socket.on('leave_game', ({ gameId }) => {
+    const game = games.get(gameId);
+    if (game) removePlayer(game, socket.id);
+  });
+
   socket.on('bid', ({ gameId, bid }) => {
     const game = games.get(gameId);
     if (!game) return;
@@ -664,6 +737,11 @@ io.on('connection', (socket) => {
     const game = games.get(gameId);
     if (!game) return;
     
+    if (playerIndexOf(game, socket.id) !== 0) {
+      socket.emit('error', { message: 'Only the host can start a new game' });
+      return;
+    }
+    if (game.state === 'lobby' || game.state === 'abandoned') return;
     console.log('Resetting game:', gameId, 'Type:', game.gameType);
     
     if (game.gameType === 'lorum') {
@@ -677,6 +755,7 @@ io.on('connection', (socket) => {
       
       const lorumGame = require('./lorumGame');
       lorumGame.startLorumDeal(game);
+      broadcastGameState(game);
     } else {
       // Reset Mexico game
       game.scores = [0, 0, 0];
@@ -687,7 +766,8 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('chat_message', ({ gameId, message }) => {
+  socket.on('chat_message', ({ gameId, message: rawMessage }) => {
+    let message = rawMessage;
     const game = games.get(gameId);
     if (!game) return;
     
@@ -696,6 +776,8 @@ io.on('connection', (socket) => {
     
     const playerName = game.players[playerIndex].name;
     const timestamp = Date.now();
+    message = String(message || '').trim().slice(0, 200);
+    if (!message) return;
     
     // Broadcast chat message to all players in the game
     for (let i = 0; i < game.players.length; i++) {
@@ -752,7 +834,7 @@ io.on('connection', (socket) => {
         setTimeout(() => {
           lorumGame.continueLorumAfterTrick(game);
           broadcastGameState(game);
-        }, 3000);
+        }, TRICK_DELAY);
       }
     }
   });
@@ -791,18 +873,10 @@ io.on('connection', (socket) => {
   
   socket.on('disconnect', (reason) => {
     console.log('Player disconnected:', socket.id, 'Reason:', reason);
-    playerSockets.delete(socket.id);
-    
-    // Find and clean up games with this player
-    for (const [gameId, game] of games.entries()) {
-      const playerIndex = game.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        console.log(`Player ${playerIndex} left game ${gameId}`);
-        // Notify other players
-        io.to(gameId).emit('player_left', { playerIndex });
-        // Could implement reconnection logic here
-      }
+    for (const game of [...games.values()]) {
+      if (playerIndexOf(game, socket.id) !== -1) removePlayer(game, socket.id);
     }
+    playerSockets.delete(socket.id);
   });
 });
 

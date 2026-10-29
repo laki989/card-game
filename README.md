@@ -1,204 +1,64 @@
-# Card Game - Online Multiplayer
+# Mexico & Lorum
 
-A real-time multiplayer card game for 3 players, built with Node.js, WebSockets, and React.
+Real-time multiplayer Serbian card games in the browser: **Mexico** (3 players) and **Lorum** (4 players). Node.js + Socket.IO server, React front end (no build step).
 
-## Features
+## Run it
 
-✅ **Core Game Mechanics**
-- Full implementation of Šnops rules
-- Bidding system (5-10 and Mexico)
-- Talon reveal and discard
-- Trump selection
-- Trick-taking with proper suit/trump rules
-- Scoring system (first to 101 wins)
-
-✅ **Multiplayer**
-- Real-time gameplay via WebSockets
-- Create and join games with game codes
-- 3-player support
-
-✅ **UI Features**
-- German-suited cards (Acorns, Leaves, Hearts, Bells)
-- Classic forest/tavern aesthetic
-- Game history viewer
-- Visual turn indicators
-- Score tracking
-- Trick display
-
-## Setup & Installation
-
-### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
-
-### Installation Steps
-
-1. **Install dependencies:**
 ```bash
 npm install
+npm start          # http://localhost:3000
 ```
 
-2. **Start the server:**
-```bash
-npm start
-```
+Node 18 or newer. Open the page in several browser windows (or on several devices on the same network) to play.
 
-Or for development with auto-restart:
-```bash
-npm run dev
-```
+## How a game starts
 
-3. **Open the game:**
-Open your browser and navigate to:
-```
-http://localhost:3000
-```
+1. A player enters their name, picks a game (and for Lorum, the contract order) and clicks **Create table**. They become the host.
+2. They share the 6-letter table code. Others enter it and click **Join**; they land in the lobby around the table.
+3. Each guest taps **I'm ready**. The host's **Start game** button unlocks once every seat is filled and everyone is ready.
+4. Leaving the lobby frees the seat (if the host leaves, the next player becomes host). Leaving after the deal closes the table for everyone with a message.
 
-## How to Play
+The host can start a fresh game (scores back to 0) from the menu, or with **Play again** when a game ends.
 
-### Starting a Game
-
-1. **Player 1**: 
-   - Enter your name
-   - Click "Create New Game"
-   - Share the game code with other players
-
-2. **Players 2 & 3**:
-   - Enter your name
-   - Click "Join Existing Game"
-   - Enter the game code
-   - Click "Join Game"
-
-3. Game starts automatically when all 3 players join
-
-### Game Flow
-
-1. **Bidding Phase**
-   - First player (after dealer) must bid at least 5
-   - Each player can bid higher or pass
-   - Bidding ends when 2 players pass or someone bids Mexico
-
-2. **Talon Phase** (if not Mexico)
-   - Bid winner sees 2 talon cards
-   - Adds them to hand
-   - Discards 2 cards
-   - Selects trump suit
-
-3. **Playing Phase**
-   - Bid winner leads first trick
-   - Must follow suit if possible
-   - Must play trump if can't follow suit
-   - Highest card in led suit wins (trump beats all)
-   - Winner of trick leads next
-
-4. **Scoring**
-   - Bid winner: +tricks if successful, -bid value if failed
-   - Other players: always +tricks taken
-   - First to 101 points wins
-
-### Game Rules
-
-**Card Ranks** (lowest to highest):
-7, 8, 9, 10, J, Q, K, A
-
-**Suits:**
-- 🌰 Acorns (Eichel)
-- 🍃 Leaves (Grün)
-- ♥️ Hearts (Herz)
-- 🔔 Bells (Schellen)
-
-**Special Bids:**
-- **Mexico (20)**: Must take all 10 tricks, no trump, no talon
-
-## Testing Locally
-
-You can test the game alone by opening 3 browser windows:
-
-1. Window 1: Create game, get game code
-2. Window 2: Join with game code
-3. Window 3: Join with same game code
-
-All windows will sync in real-time!
-
-## Architecture
-
-### Backend (server.js)
-- Express.js web server
-- Socket.IO for WebSocket communication
-- Game state management
-- Card dealing and shuffling
-- Rule enforcement
-- Scoring logic
-
-### Frontend (public/index.html)
-- React (via CDN)
-- Socket.IO client
-- German card graphics using Unicode symbols
-- Real-time state synchronization
-- Responsive layout
-
-## File Structure
+## Files
 
 ```
-snops-card-game/
-├── server.js           # Node.js backend
-├── public/
-│   └── index.html      # React frontend (all-in-one)
-├── package.json        # Dependencies
-└── README.md          # This file
+server.js           Server, lobby, Mexico rules
+lorumGame.js        Lorum rules (7 contracts, Lora layout, scoring)
+public/index.html   Page shell
+public/app.js       The whole UI (React, compiled in the browser)
+public/styles.css   Styles, tokens match the Pencil design (Card Game.pen)
+public/img/         Card images + suit symbols
 ```
 
-## Future Enhancements
+### Card images
 
-Planned features:
-- [ ] Chat system
-- [ ] Player statistics
-- [ ] Reconnection handling
-- [ ] Multiple game rooms
-- [ ] User accounts/authentication
-- [ ] Game replay viewer
-- [ ] Sound effects
-- [ ] Mobile optimization
+Dealt cards use the illustrated images in `public/img/`, named `{suit}-{rank}.webp`:
 
-## Technical Details
+- suit: `H` hearts, `B` bells, `L` leaves, `A` acorns
+- rank: `A`, `K`, `Q`, `J`, `10`, `09`, `08`, `07`
 
-**Network Protocol:**
-- `create_game`: Create new game room
-- `join_game`: Join existing game
-- `bid`: Submit bid or pass
-- `take_talon`: Take talon and discard cards
-- `select_trump`: Choose trump suit
-- `play_card`: Play a card from hand
-- `game_state`: Receive updated game state
+For example `H-A.webp`, `L-09.webp`. If an image is missing, that card is drawn with its rank and suit symbol instead, so the game still works.
 
-**Game States:**
-- `waiting`: Waiting for players
-- `bidding`: Bidding phase
-- `talon_reveal`: Showing talon to bid winner
-- `trump_selection`: Bid winner selecting trump
-- `playing`: Playing tricks
-- `finished`: Game complete
+Suit symbols (trump picker, Lora columns, game tiles) are `a-symbol.png`, `b-symbol.png`, `h-symbol.png`, `l-symbol.png`. Opponents' hands use `back.webp`.
 
-## Troubleshooting
+### Phones and table textures
 
-**Port already in use:**
-```bash
-# Change port in server.js (line at bottom)
-const PORT = process.env.PORT || 3001;
-```
+On phones (and narrow portrait tablets) the game switches to a one-column layout: opponents across the top, the table in the middle, your hand at the bottom, and the history and scoreboard as bottom sheets.
 
-**Can't connect:**
-- Ensure server is running (`npm start`)
-- Check console for errors
-- Verify you're using `http://localhost:3000`
+Each player can pick their own table in the in-game **Menu → Table**: green felt, kafana cloth, or a wooden table (`img/wood.jpg`). The choice is remembered on that device.
 
-**Game not starting:**
-- Need exactly 3 players
-- Each player must join with unique name
-- Check browser console for errors
+### Language
 
-## License
+English and Serbian. Switch on the start screen (top right) or in **Menu → Language**; the choice is remembered per device, and the first visit follows the browser language. All texts live in `public/i18n.js`.
 
-MIT
+### Buy the creator a round
 
-## Credits
+The receipt (header button, menu, start screen, game over) shows three fixed rounds and a custom amount. The QR code is rebuilt for the chosen amount using the NBS IPS format every Serbian banking app reads. Recipient, account, payment code, purpose and the amounts are in `public/config.js`. QR drawing uses `public/vendor/qrcode.js` (qrcode-generator, MIT).
+
+## Settings
+
+| Environment variable | Default | What it does |
+| --- | --- | --- |
+| `PORT` | `3000` | Server port |
+| `TRICK_DELAY_MS` | `3000` | How long a finished trick stays on the table |

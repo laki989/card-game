@@ -6,7 +6,7 @@ const CONTRACTS = [
   { id: 2, name: 'Maximum', nameLocal: 'Maksimum' },
   { id: 3, name: 'Queens', nameLocal: 'Dame' },
   { id: 4, name: 'Hearts', nameLocal: 'Srca' },
-  { id: 5, name: 'Jack of Clubs', nameLocal: 'Žandar tref' },
+  { id: 5, name: 'Jack of Acorns', nameLocal: 'Žandar tref' },
   { id: 6, name: 'King of Hearts', nameLocal: 'Kralj srce' },
   { id: 7, name: 'Lora', nameLocal: 'Ređanje' }
 ];
@@ -16,7 +16,7 @@ function createLorumGame(gameId, contractMode) {
     id: gameId,
     gameType: 'lorum',
     players: [],
-    state: 'waiting', // waiting, playing, contract_selection, lora_playing, finished
+    state: 'lobby', // lobby, contract_selection, playing, trick_complete, lora_playing, finished, abandoned
     contractMode: contractMode, // 'fixed' or 'choice'
     
     // Deal tracking
@@ -83,6 +83,8 @@ function startLorumDeal(game) {
   game.lastTrickWinner = null;
   game.runningScores = [0, 0, 0, 0];
   game.loraPasses = [0, 0, 0, 0];
+  game.loraLayout = { acorns: [], leaves: [], hearts: [], bells: [] };
+  game.loraStartRank = null;
   
   // Player to dealer's RIGHT starts (counterclockwise, so +1)
   game.currentPlayer = (game.currentDealer + 1) % 4;
@@ -92,7 +94,7 @@ function startLorumDeal(game) {
   if (game.contractMode === 'fixed') {
     // Fixed order: cycle through 1-7
     game.currentContract = (game.currentDeal % 7) + 1;
-    game.state = 'playing';
+    game.state = game.currentContract === 7 ? 'lora_playing' : 'playing';
   } else {
     // Choice mode: first player selects
     game.state = 'contract_selection';
@@ -267,6 +269,9 @@ function playLoraCard(game, playerIndex, card) {
 function passLoraPlay(game, playerIndex) {
   if (game.state !== 'lora_playing') return { success: false, error: 'Not in Lora state' };
   if (game.currentPlayer !== playerIndex) return { success: false, error: 'Not your turn' };
+  if (game.hands[playerIndex].some(c => canPlayLora(game, c))) {
+    return { success: false, error: 'You have a card that fits - you must play it' };
+  }
   
   // Track the pass
   game.loraPasses[playerIndex]++;
@@ -275,6 +280,13 @@ function passLoraPlay(game, playerIndex) {
   game.currentPlayer = (game.currentPlayer + 1) % 4;
   
   return { success: true };
+}
+
+function canPlayLora(game, card) {
+  if (!game.loraStartRank) return true;
+  const pile = game.loraLayout[card.suit];
+  if (pile.length === 0) return card.rank === game.loraStartRank;
+  return card.rank === getNextRank(pile[pile.length - 1].rank);
 }
 
 // Calculate running scores (shown during play, not final)

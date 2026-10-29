@@ -2,25 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mexico Card Game</title>
-  
-  <!-- External Libraries -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#121614">
+  <title>Mexico & Lorum</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Lora:wght@400;600&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-  
-  <!-- Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Lora:wght@400;600&display=swap" rel="stylesheet">
-  
-  <!-- Custom Styles -->
-  <link rel="stylesheet" href="styles.css">
+  <!-- Served by the game server itself, always matches the server version -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="config.js"></script>
+  <script src="i18n.js"></script>
+  <script src="vendor/qrcode.js"></script>
 </head>
 <body>
   <div id="root"></div>
-  
-  <!-- Game Application -->
   <script type="text/babel" src="app.js"></script>
 </body>
 </html>
