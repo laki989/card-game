@@ -270,7 +270,8 @@ function Icon({ name, size = 18 }) {
     globe: <><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></>,
     languages: <><path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
-    lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>
+    lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
+    info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>
   };
   return (
     <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -967,8 +968,60 @@ function PasswordPrompt({ host, wrong, onSubmit, onClose }) {
   );
 }
 
+function TablesPanel({ tables, variant, onPick }) {
+  const { t } = useApp();
+  const [filter, setFilter] = useState('all');
+  const shown = filter === 'all' ? tables : tables.filter(x => x.gameType === filter);
+  return (
+    <section className={`tables tables--${variant}`} aria-label={t('openTables')}>
+      <div className="tables__head">
+        <div className="tables__title">
+          <span className="tables__live" aria-hidden="true" />
+          <h2>{t('openTables')}</h2>
+          <span className="tables__count">{tables.length}</span>
+        </div>
+        <div className="tables__filter" role="group" aria-label={t('game')}>
+          {['all', 'mexico', 'lorum'].map(f => (
+            <button type="button" key={f} className={filter === f ? 'is-on' : ''} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {f === 'all' ? t('filterAll') : GAMES[f].name}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="tables__scroll">
+        {shown.length === 0 ? (
+          <div className="tables__empty">{filter === 'all' ? t('noTables') : t('noTablesFor', { game: GAMES[filter].name })}</div>
+        ) : (
+          <div className="tables__list">
+            {shown.map(tb => {
+              const g = GAMES[tb.gameType];
+              return (
+                <button type="button" key={tb.id} className="table-row" onClick={() => onPick(tb)}>
+                  <span className="table-row__suits">{g.suits.map(s => <SuitIcon key={s} suit={s} size={20} />)}</span>
+                  <span className="table-row__main">
+                    <b>{g.name}</b>
+                    <span title={`${t('hostedBy', { name: tb.host })}${tb.mode ? ` · ${t(tb.mode === 'choice' ? 'firstChooses' : 'fixedOrder')}` : ''}`}>{t('hostedBy', { name: tb.host })}{tb.mode ? ` · ${t(tb.mode === 'choice' ? 'firstChooses' : 'fixedOrder')}` : ''}</span>
+                  </span>
+                  <span className={`table-row__lock ${tb.locked ? '' : 'is-off'}`} title={tb.locked ? t('lockedTable') : undefined}><Icon name="lock" size={15} /></span>
+                  <span className="table-row__seats">
+                    <span className="seat-dots" aria-hidden="true">{Array.from({ length: tb.max }).map((_, i) => <i key={i} className={i < tb.seats ? 'is-on' : ''} />)}</span>
+                    <span className="table-row__count">{tb.seats}/{tb.max}</span>
+                  </span>
+                  <span className="table-row__join">{t('join')}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div className="tables__foot"><Icon name="info" size={14} /><span>{t('tablesHint')}</span></div>
+    </section>
+  );
+}
+
 function Home({ tables, invite, denied, onDismissInvite, onCreate, onJoin }) {
-  const { mobile, t, openDonate } = useApp();
+  const { mobile, vw, t, openDonate } = useApp();
+  const narrow = vw <= 900; // matches the CSS breakpoint: one column, panel inside it
   const [name, setName] = useState(loadPref('name', ''));
   const [game, setGame] = useState('mexico');
   const [mode, setMode] = useState('fixed');
@@ -996,13 +1049,15 @@ function Home({ tables, invite, denied, onDismissInvite, onCreate, onJoin }) {
   return (
     <div className="home">
       <div className="home__lang"><LangSwitch /></div>
-      <div className="home__fan" aria-hidden="true">
-        <div className="home__glow" />
-        {fan.map(([r, s, rot], i) => (
-          <Card key={i} card={{ rank: r, suit: s }} w={mobile ? 64 : 120} className="home__fan-card"
-            style={{ transform: `translateX(${(i - 2) * spread}px) translateY(${Math.abs(i - 2) * drop}px) rotate(${rot}deg)` }} />
-        ))}
-      </div>
+      {narrow && (
+        <div className="home__fan" aria-hidden="true">
+          <div className="home__glow" />
+          {fan.map(([r, s, rot], i) => (
+            <Card key={i} card={{ rank: r, suit: s }} w={mobile ? 64 : 120} className="home__fan-card"
+              style={{ transform: `translateX(${(i - 2) * spread}px) translateY(${Math.abs(i - 2) * drop}px) rotate(${rot}deg)` }} />
+          ))}
+        </div>
+      )}
 
       <div className="home__content">
         <div className="home__heading">
@@ -1034,33 +1089,7 @@ function Home({ tables, invite, denied, onDismissInvite, onCreate, onJoin }) {
           </div>
         )}
 
-        <section className="tables" aria-label={t('openTables')}>
-          <div className="tables__head">
-            <span className="field__label">{t('openTables')}</span>
-            <span className="tables__count">{tables.length}</span>
-          </div>
-          {tables.length === 0 ? (
-            <div className="tables__empty">{t('noTables')}</div>
-          ) : (
-            <div className="tables__list">
-              {tables.map(tb => {
-                const g = GAMES[tb.gameType];
-                return (
-                  <button type="button" key={tb.id} className="table-row" onClick={() => joinTable(tb)}>
-                    <span className="table-row__suits">{g.suits.map(s => <SuitIcon key={s} suit={s} size={20} />)}</span>
-                    <span className="table-row__main">
-                      <b>{g.name}</b>
-                      <span>{t('hostedBy', { name: tb.host })}{tb.mode ? ` · ${t(tb.mode === 'choice' ? 'firstChooses' : 'fixedOrder')}` : ''}</span>
-                    </span>
-                    {tb.locked && <span className="table-row__lock" title={t('lockedTable')}><Icon name="lock" size={15} /></span>}
-                    <span className="table-row__seats">{tb.seats}/{tb.max}</span>
-                    <span className="table-row__join">{t('join')}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </section>
+        {narrow && <TablesPanel tables={tables} variant="inline" onPick={joinTable} />}
 
         <div className="field">
           <span className="field__label">{t('game')}</span>
@@ -1106,6 +1135,8 @@ function Home({ tables, invite, denied, onDismissInvite, onCreate, onJoin }) {
           <b>{t('buyCreatorRound')}</b>
         </button>
       </div>
+
+      {!narrow && <TablesPanel tables={tables} variant="side" onPick={joinTable} />}
 
       {prompt && (
         <PasswordPrompt key={prompt.n} host={promptTable?.host} wrong={prompt.wrong}
