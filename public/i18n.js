@@ -33,6 +33,10 @@ window.I18N = {
     joinTable: 'Join table',
     copyLink: 'Copy link',
     lockedTable: 'Password protected',
+    filterAll: 'All',
+    noTablesFor: 'No open {game} tables right now.',
+    tablesHint: 'Tables update live. Locked tables ask for a password.',
+
 
     createTable: 'Create {game} table',
     tableCode: 'Table code',
@@ -243,6 +247,10 @@ window.I18N = {
     joinTable: 'Uđi za sto',
     copyLink: 'Kopiraj link',
     lockedTable: 'Zaštićeno lozinkom',
+    filterAll: 'Svi',
+    noTablesFor: 'Trenutno nema otvorenih {game} stolova.',
+    tablesHint: 'Lista se osvežava uživo. Zaključani stolovi traže lozinku.',
+
 
     createTable: 'Napravi {game} sto',
     tableCode: 'Kod stola',
