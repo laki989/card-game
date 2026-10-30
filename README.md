@@ -17,6 +17,7 @@ Node 18 or newer. Open the page in several browser windows (or on several device
 2. They share the 6-letter table code. Others enter it and click **Join**; they land in the lobby around the table.
 3. Each guest taps **I'm ready**. The host's **Start game** button unlocks once every seat is filled and everyone is ready.
 4. Leaving the lobby frees the seat (if the host leaves, the next player becomes host). Leaving after the deal closes the table for everyone with a message.
+5. If a player's connection drops (closed tab, killed app, lost Wi-Fi, locked phone), their seat is held for two minutes and the others see "reconnecting". Opening the game again on the same device takes the seat back automatically. The seat is saved in the browser under `cardgames.session`. If the window runs out, the seat is released as in step 4. Starting a game waits until nobody is away.
 
 The host can start a fresh game (scores back to 0) from the menu, or with **Play again** when a game ends.
 
@@ -62,3 +63,4 @@ The receipt (header button, menu, start screen, game over) shows three fixed rou
 | --- | --- | --- |
 | `PORT` | `3000` | Server port |
 | `TRICK_DELAY_MS` | `3000` | How long a finished trick stays on the table |
+| `RECONNECT_GRACE_MS` | `120000` | How long a dropped player's seat is held |

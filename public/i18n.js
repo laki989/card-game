@@ -184,6 +184,10 @@ window.I18N = {
     send: 'Send',
     closeChat: 'Close chat',
     reconnecting: 'Connection lost. Reconnecting…',
+    reconnectingShort: 'Reconnecting…',
+    playerReconnecting: '{name} is reconnecting…',
+    waitingForReconnect: 'Waiting for {name} to reconnect.',
+
     tableClosed: 'Table closed',
     leftTitle: '{name} left the table.',
     leftLead: 'The game can’t continue without them. Start a new table and send the code again.',
@@ -366,6 +370,10 @@ window.I18N = {
     send: 'Pošalji',
     closeChat: 'Zatvori čet',
     reconnecting: 'Veza je prekinuta. Povezujem ponovo…',
+    reconnectingShort: 'Povezujem se…',
+    playerReconnecting: '{name} se ponovo povezuje…',
+    waitingForReconnect: 'Čeka se da se {name} ponovo poveže.',
+
     tableClosed: 'Sto je zatvoren',
     leftTitle: '{name} više nije za stolom.',
     leftLead: 'Igra ne može da se nastavi. Napravi novi sto i ponovo pošalji kod.',
@@ -406,6 +414,7 @@ window.I18N_CONTRACTS = {
 
 // Server messages arrive in English; these are shown in Serbian when SR is on.
 window.I18N_SERVER_SR = {
+  'That table is no longer open': 'Taj sto više nije otvoren',
   'No table with that code': 'Nema stola sa tim kodom',
   'That game has already started': 'Ta igra je već počela',
   'That table is full': 'Sto je pun',

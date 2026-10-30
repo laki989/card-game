@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -486,7 +487,7 @@ function getPlayerGameState(game, playerIndex) {
   const baseState = {
     gameId: game.id,
     gameType: game.gameType,
-    players: game.players.map(p => ({ name: p.name, id: p.id, ready: !!p.ready })),
+    players: game.players.map(p => ({ name: p.name, ready: !!p.ready, connected: p.connected !== false })),
     playerIndex: playerIndex,
     hostIndex: 0,
     maxPlayers: maxPlayersFor(game),
@@ -549,22 +550,50 @@ function playerIndexOf(game, socketId) {
   return game.players.findIndex(p => p.id === socketId);
 }
 
-// Remove a player from a game. In the lobby their seat simply frees up
-// (the next player becomes host if the host left). Once cards are dealt,
-// the table can't continue, so it's closed for everyone.
-function removePlayer(game, socketId) {
-  const idx = playerIndexOf(game, socketId);
-  if (idx === -1) return;
-  const name = game.players[idx].name;
-  const sock = playerSockets.get(socketId);
+// How long a dropped player's seat is held so they can come back (ms).
+// Same browser, same token: the page rejoins automatically.
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 120000;
+const graceTimers = new Map(); // token -> timeout
+
+function clearGrace(token) {
+  const t = graceTimers.get(token);
+  if (t) { clearTimeout(t); graceTimers.delete(token); }
+}
+
+function startGrace(game, token) {
+  clearGrace(token);
+  const timer = setTimeout(() => {
+    graceTimers.delete(token);
+    const idx = game.players.findIndex(p => p.token === token);
+    if (idx === -1 || game.players[idx].connected) return;
+    if (games.get(game.id) !== game) return;
+    console.log('Reconnect window expired:', game.id, game.players[idx].name);
+    removeSeat(game, idx);
+  }, RECONNECT_GRACE_MS);
+  graceTimers.set(token, timer);
+}
+
+// Forget a table completely, including any seats still waiting to reconnect
+function dropGame(game) {
+  for (const p of game.players) clearGrace(p.token);
+  games.delete(game.id);
+}
+
+// Give up a seat for good. In the lobby it simply frees up (the next player
+// becomes host if the host left). Once cards are dealt, the table can't
+// continue, so it's closed for everyone.
+function removeSeat(game, idx) {
+  const p = game.players[idx];
+  const sock = p.id ? playerSockets.get(p.id) : null;
   if (sock) sock.leave(game.id);
+  clearGrace(p.token);
 
   if (game.state === 'lobby') {
     game.players.splice(idx, 1);
     // Anyone who was ready stays ready; the host never needs to be
     if (game.players[0]) game.players[0].ready = true;
     if (game.players.length === 0) {
-      games.delete(game.id);
+      dropGame(game);
       console.log('Lobby closed (empty):', game.id);
       return;
     }
@@ -572,11 +601,17 @@ function removePlayer(game, socketId) {
   } else if (game.state !== 'abandoned') {
     game.players.splice(idx, 1);
     game.state = 'abandoned';
-    game.leftPlayer = name;
+    game.leftPlayer = p.name;
     broadcastGameState(game);
-    games.delete(game.id);
-    console.log('Game closed, player left mid-game:', game.id, name);
+    dropGame(game);
+    console.log('Game closed, player left mid-game:', game.id, p.name);
   }
+}
+
+// Explicit "Leave table": the seat is released right away
+function leaveGame(game, socketId) {
+  const idx = playerIndexOf(game, socketId);
+  if (idx !== -1) removeSeat(game, idx);
 }
 
 function startGame(game) {
@@ -612,13 +647,14 @@ io.on('connection', (socket) => {
       game = createGame(gameId);
     }
     
-    game.players.push({ id: socket.id, name: playerName, ready: true });
+    const token = crypto.randomUUID();
+    game.players.push({ id: socket.id, token, name: playerName, ready: true, connected: true });
     games.set(gameId, game);
     playerSockets.set(socket.id, socket);
     
     socket.join(gameId);
     console.log('Game created:', gameId, 'Type:', gameType);
-    socket.emit('game_created', { gameId, playerIndex: 0, gameType });
+    socket.emit('game_created', { gameId, playerIndex: 0, gameType, token });
     socket.emit('game_state', getPlayerGameState(game, 0));
   });
   
@@ -640,11 +676,12 @@ io.on('connection', (socket) => {
     if (playerIndexOf(game, socket.id) !== -1) return;
 
     const playerIndex = game.players.length;
-    game.players.push({ id: socket.id, name: playerName, ready: false });
+    const token = crypto.randomUUID();
+    game.players.push({ id: socket.id, token, name: playerName, ready: false, connected: true });
     playerSockets.set(socket.id, socket);
     socket.join(code);
     console.log('Player joined lobby:', code, playerName, `${game.players.length}/${maxPlayersFor(game)}`);
-    socket.emit('game_joined', { gameId: code, playerIndex, gameType: game.gameType });
+    socket.emit('game_joined', { gameId: code, playerIndex, gameType: game.gameType, token });
     broadcastGameState(game);
   });
 
@@ -668,6 +705,11 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: `Waiting for ${maxPlayersFor(game) - game.players.length} more player(s)` });
       return;
     }
+    const away = game.players.find(p => p.connected === false);
+    if (away) {
+      socket.emit('error', { message: `Waiting for ${away.name} to reconnect` });
+      return;
+    }
     if (!game.players.every(p => p.ready)) {
       socket.emit('error', { message: 'Not everyone is ready yet' });
       return;
@@ -678,7 +720,35 @@ io.on('connection', (socket) => {
 
   socket.on('leave_game', ({ gameId }) => {
     const game = games.get(gameId);
-    if (game) removePlayer(game, socket.id);
+    if (game) leaveGame(game, socket.id);
+  });
+
+  // Page reloaded, app reopened, or connection came back: take the seat again
+  socket.on('rejoin_game', ({ gameId, token } = {}) => {
+    const code = String(gameId || '').trim().toUpperCase();
+    const game = games.get(code);
+    const idx = game && typeof token === 'string' ? game.players.findIndex(p => p.token === token) : -1;
+    if (idx === -1) {
+      socket.emit('rejoin_failed');
+      return;
+    }
+    const p = game.players[idx];
+    // Another open tab may still hold this seat: that tab steps back
+    if (p.id && p.id !== socket.id) {
+      const old = playerSockets.get(p.id);
+      if (old) {
+        old.emit('seat_taken');
+        old.leave(code);
+      }
+      playerSockets.delete(p.id);
+    }
+    clearGrace(token);
+    p.id = socket.id;
+    p.connected = true;
+    playerSockets.set(socket.id, socket);
+    socket.join(code);
+    console.log('Player rejoined:', code, p.name);
+    broadcastGameState(game);
   });
 
   socket.on('bid', ({ gameId, bid }) => {
@@ -873,10 +943,17 @@ io.on('connection', (socket) => {
   
   socket.on('disconnect', (reason) => {
     console.log('Player disconnected:', socket.id, 'Reason:', reason);
-    for (const game of [...games.values()]) {
-      if (playerIndexOf(game, socket.id) !== -1) removePlayer(game, socket.id);
-    }
     playerSockets.delete(socket.id);
+    // Keep the seat for a while: the player may come back with their token
+    for (const game of [...games.values()]) {
+      const idx = playerIndexOf(game, socket.id);
+      if (idx === -1) continue;
+      const p = game.players[idx];
+      p.id = null;
+      p.connected = false;
+      startGrace(game, p.token);
+      broadcastGameState(game);
+    }
   });
 });
 

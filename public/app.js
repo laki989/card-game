@@ -96,6 +96,18 @@ function savePref(key, value) {
   try { localStorage.setItem(`cardgames.${key}`, value); } catch (e) { /* ignore */ }
 }
 
+// The seat token lets a player take their seat back after a reload or a killed app
+const SESSION_KEY = 'cardgames.session';
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return null; }
+}
+function saveSession(sess) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(sess)); } catch (e) { /* ignore */ }
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+}
+
 // ============================================================================
 // LANGUAGE
 // ============================================================================
@@ -126,6 +138,8 @@ function makeI18n(lang) {
     if (lang !== 'sr') return m;
     const more = /^Waiting for (\d+) more player/.exec(m);
     if (more) return `Čeka se još ${pl(Number(more[1]), 'player')}`;
+    const back = /^Waiting for (.+) to reconnect$/.exec(m);
+    if (back) return t('waitingForReconnect', { name: back[1] });
     return window.I18N_SERVER_SR[m] || m;
   };
   return { lang, t, pl, suit, contract, serverMsg };
@@ -1032,15 +1046,17 @@ function Lobby({ gs, me, onReady, onStart, onLeave }) {
   const n = gs.players.length;
   const notReady = gs.players.filter(p => !p.ready);
   const allIn = n === max;
-  const canStart = allIn && notReady.length === 0;
+  const away = gs.players.filter(p => p.connected === false);
+  const canStart = allIn && notReady.length === 0 && away.length === 0;
   const myReady = gs.players[me]?.ready;
 
   let hint;
   if (!allIn) hint = t('hintShare', { more: pl(max - n, 'player') });
+  else if (away.length) hint = t('waitingForReconnect', { name: away[0].name });
   else if (notReady.length) hint = t('hintReady', { names: notReady.map(p => p.name).join(', ') });
   else hint = isHost ? t('hintHostGo') : t('hintGuestGo', { host: gs.players[gs.hostIndex].name });
 
-  const statusOf = idx => (idx === gs.hostIndex ? 'host' : gs.players[idx].ready ? 'ready' : 'notReady');
+  const statusOf = idx => (idx === gs.hostIndex ? 'host' : gs.players[idx].connected === false ? 'reconnectingShort' : gs.players[idx].ready ? 'ready' : 'notReady');
   const mode = gs.gameType === 'lorum' ? t(gs.contractMode === 'choice' ? 'modeChoice' : 'modeFixed') : t('lobbyWord');
   const nameOf = idx => (idx === me ? t('youTag', { name: gs.players[idx].name }) : gs.players[idx].name);
 
@@ -1660,18 +1676,45 @@ function App() {
   useEffect(() => {
     const s = io();
     setSocket(s);
-    s.on('connect', () => setConnected(true));
+    // On every (re)connect, take back the saved seat: page reload, app reopened, or Wi-Fi back
+    const rejoin = () => {
+      const sess = loadSession();
+      if (sess && sess.gameId && sess.token) s.emit('rejoin_game', { gameId: sess.gameId, token: sess.token });
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible' && !s.connected) s.connect(); };
+    let displaced = false; // another tab took this seat; this page must not take it back
+    s.on('connect', () => { setConnected(true); if (!displaced) rejoin(); });
     s.on('disconnect', () => setConnected(false));
-    s.on('game_state', state => setGs(state));
+    s.on('seat_taken', () => {
+      displaced = true;
+      setGs(null);
+      showError('Your seat is now used in another tab');
+    });
+    s.on('game_created', d => { displaced = false; saveSession({ gameId: d.gameId, token: d.token }); });
+    s.on('game_joined', d => { displaced = false; saveSession({ gameId: d.gameId, token: d.token }); });
+    s.on('game_state', state => {
+      if (state.state === 'abandoned') clearSession();
+      setGs(state);
+    });
+    s.on('rejoin_failed', () => {
+      clearSession();
+      setGs(null);
+      showError('That table is no longer open');
+    });
     s.on('error', ({ message }) => showError(message));
     s.on('chat_message', m => {
       setMessages(prev => [...prev, m]);
       if (!chatOpenRef.current) setUnread(u => u + 1);
     });
-    return () => s.close();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      s.close();
+    };
   }, []);
 
   const backHome = () => {
+    clearSession();
     setGs(null);
     setMessages([]);
     setUnread(0);
@@ -1684,6 +1727,12 @@ function App() {
   const confirmLeave = () => {
     if (confirm(i18n.t('confirmLeave'))) leave();
   };
+
+  const away = gs ? gs.players.filter(p => p.connected === false) : [];
+  const notices = [
+    !connected && i18n.t('reconnecting'),
+    ...away.map(p => i18n.t('playerReconnecting', { name: p.name }))
+  ].filter(Boolean);
 
   const ctx = { mobile, vw: viewport.w, theme, setTheme, setLang, openDonate: () => setDonateOpen(true), ...i18n };
 
@@ -1726,7 +1775,7 @@ function App() {
       )}
       {donateOpen && <Donate onClose={() => setDonateOpen(false)} />}
       {error && <div className="toast" role="alert">{i18n.serverMsg(error)}</div>}
-      {!connected && <div className="toast toast--warn">{i18n.t('reconnecting')}</div>}
+      {notices.length > 0 && <div className="toast toast--warn">{notices.join(' · ')}</div>}
     </AppCtx.Provider>
   );
 }
