@@ -13,11 +13,12 @@ Node 18 or newer. Open the page in several browser windows (or on several device
 
 ## How a game starts
 
-1. A player enters their name, picks a game (and for Lorum, the contract order) and clicks **Create table**. They become the host.
-2. They share the 6-letter table code. Others enter it and click **Join**; they land in the lobby around the table.
+1. A player enters their name, picks a game (and for Lorum, the contract order), optionally sets a password, and clicks **Create table**. They become the host and the table appears in the **Open tables** list on everyone's start screen.
+2. Others click a table in the list (and type the password if it has a lock) and land in the lobby around the table. Tables that are full, started, or whose host is away are not listed.
 3. Each guest taps **I'm ready**. The host's **Start game** button unlocks once every seat is filled and everyone is ready.
 4. Leaving the lobby frees the seat (if the host leaves, the next player becomes host). Leaving after the deal closes the table for everyone with a message.
-5. If a player's connection drops (closed tab, killed app, lost Wi-Fi, locked phone), their seat is held for two minutes and the others see "reconnecting". Opening the game again on the same device takes the seat back automatically. The seat is saved in the browser under `cardgames.session`. If the window runs out, the seat is released as in step 4. Starting a game waits until nobody is away.
+5. The lobby's **Copy link** button gives a link like `/?join=ABC123` that opens the start screen ready to join that table. The 6-letter table code still works on the server, but there is no code box on the start screen. Table passwords are stored as salted hashes, and five wrong guesses from one address pause joining for a minute.
+6. If a player's connection drops (closed tab, killed app, lost Wi-Fi, locked phone), their seat is held for two minutes and the others see "reconnecting". Opening the game again on the same device takes the seat back automatically. The seat is saved in the browser under `cardgames.session`. If the window runs out, the seat is released as in step 4. Starting a game waits until nobody is away.
 
 The host can start a fresh game (scores back to 0) from the menu, or with **Play again** when a game ends.
 

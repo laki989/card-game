@@ -577,6 +577,7 @@ function startGrace(game, token) {
 function dropGame(game) {
   for (const p of game.players) clearGrace(p.token);
   games.delete(game.id);
+  publishLobby();
 }
 
 // Give up a seat for good. In the lobby it simply frees up (the next player
@@ -598,6 +599,7 @@ function removeSeat(game, idx) {
       return;
     }
     broadcastGameState(game);
+    publishLobby();
   } else if (game.state !== 'abandoned') {
     game.players.splice(idx, 1);
     game.state = 'abandoned';
@@ -614,7 +616,88 @@ function leaveGame(game, socketId) {
   if (idx !== -1) removeSeat(game, idx);
 }
 
+// ---------- Open-table list and table passwords ----------
+
+const cleanName = n => String(n || '').trim().slice(0, 20) || 'Player';
+const seatedAnywhere = socketId => [...games.values()].some(g => playerIndexOf(g, socketId) !== -1);
+
+// Table passwords are kept only as salted scrypt hashes
+function hashPassword(pw) {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16);
+    crypto.scrypt(pw, salt, 32, { N: 4096 }, (err, key) => (err ? reject(err) : resolve({ salt, key })));
+  });
+}
+function checkPassword(pw, stored) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(pw, stored.salt, 32, { N: 4096 }, (err, key) => (err ? reject(err) : resolve(crypto.timingSafeEqual(key, stored.key))));
+  });
+}
+
+// Wrong passwords per address: 5 misses, then a one-minute pause
+const MAX_MISSES = 5;
+const LOCKOUT_MS = 60000;
+const failedJoins = new Map(); // ip -> { count, until, last }
+function clientIp(socket) {
+  const fwd = socket.handshake.headers['x-forwarded-for'];
+  return (fwd ? String(fwd).split(',')[0].trim() : socket.handshake.address) || 'unknown';
+}
+function lockedOut(ip) {
+  const f = failedJoins.get(ip);
+  return !!f && f.until > Date.now();
+}
+function noteMiss(ip) {
+  const f = failedJoins.get(ip) || { count: 0, until: 0, last: 0 };
+  if (f.until && f.until <= Date.now()) { f.count = 0; f.until = 0; }
+  f.count++;
+  f.last = Date.now();
+  if (f.count >= MAX_MISSES) f.until = Date.now() + LOCKOUT_MS;
+  failedJoins.set(ip, f);
+}
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60000;
+  for (const [ip, f] of failedJoins) if (f.last < cutoff) failedJoins.delete(ip);
+}, 5 * 60000).unref();
+
+// Tables someone can still sit down at, newest first. Sent only to
+// clients on the start screen, and only when the list actually changes.
+const LOBBY_ROOM = 'browse';
+function openTables() {
+  const list = [];
+  for (const game of games.values()) {
+    if (game.state !== 'lobby') continue;
+    const host = game.players[0];
+    if (!host || host.connected === false) continue;
+    const max = maxPlayersFor(game);
+    if (game.players.length >= max) continue;
+    list.push({
+      id: game.id,
+      gameType: game.gameType,
+      host: host.name,
+      seats: game.players.length,
+      max,
+      locked: !!game.password,
+      mode: game.gameType === 'lorum' ? (game.contractMode || 'fixed') : null
+    });
+  }
+  return list.reverse().slice(0, 50);
+}
+let lastPublished = '';
+let publishTimer = null;
+function publishLobby() {
+  if (publishTimer) return;
+  publishTimer = setTimeout(() => {
+    publishTimer = null;
+    const list = openTables();
+    const json = JSON.stringify(list);
+    if (json === lastPublished) return;
+    lastPublished = json;
+    io.to(LOBBY_ROOM).emit('lobby_list', list);
+  }, 120);
+}
+
 function startGame(game) {
+  publishLobby();
   if (game.gameType === 'lorum') {
     const lorumGame = require('./lorumGame');
     lorumGame.startLorumDeal(game);
@@ -632,57 +715,105 @@ io.on('connection', (socket) => {
   // Acknowledge connection
   socket.emit('connection_ack', { message: 'Connected successfully', socketId: socket.id });
   
-  socket.on('create_game', ({ playerName, gameConfig }) => {
-    console.log('Creating game for player:', playerName, 'Config:', gameConfig);
-    const gameId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
+  socket.on('lobby_subscribe', () => {
+    socket.join(LOBBY_ROOM);
+    socket.emit('lobby_list', openTables());
+  });
+  socket.on('lobby_unsubscribe', () => socket.leave(LOBBY_ROOM));
+
+  socket.on('create_game', async ({ playerName, gameConfig } = {}) => {
+    const busy = () => {
+      if (!seatedAnywhere(socket.id)) return false;
+      socket.emit('error', { message: 'Leave your current table first' });
+      return true;
+    };
+    if (busy()) return;
+
+    // Optional table password, kept only as a hash
+    const pw = String(gameConfig?.password || '').trim().slice(0, 32);
+    let stored = null;
+    if (pw) {
+      try { stored = await hashPassword(pw); } catch (e) {
+        socket.emit('error', { message: 'Could not create the table' });
+        return;
+      }
+      if (busy()) return;
+    }
+
+    let gameId;
+    do { gameId = Math.random().toString(36).substring(2, 8).toUpperCase(); } while (games.has(gameId) || gameId.length < 6);
+
     // Determine game type (default to mexico for backward compatibility)
     const gameType = gameConfig?.gameType || 'mexico';
-    
+    console.log('Creating game for player:', playerName, 'Type:', gameType, stored ? '(password)' : '');
+
     let game;
     if (gameType === 'lorum') {
       const lorumGame = require('./lorumGame');
-      game = lorumGame.createLorumGame(gameId, gameConfig.contractMode || 'fixed');
+      game = lorumGame.createLorumGame(gameId, gameConfig?.contractMode || 'fixed');
     } else {
       game = createGame(gameId);
     }
-    
+    game.password = stored;
+
     const token = crypto.randomUUID();
-    game.players.push({ id: socket.id, token, name: playerName, ready: true, connected: true });
+    game.players.push({ id: socket.id, token, name: cleanName(playerName), ready: true, connected: true });
     games.set(gameId, game);
     playerSockets.set(socket.id, socket);
-    
+
     socket.join(gameId);
     console.log('Game created:', gameId, 'Type:', gameType);
     socket.emit('game_created', { gameId, playerIndex: 0, gameType, token });
     socket.emit('game_state', getPlayerGameState(game, 0));
+    publishLobby();
   });
-  
-  socket.on('join_game', ({ gameId, playerName }) => {
-    const code = (gameId || '').trim().toUpperCase();
-    const game = games.get(code);
-    if (!game) {
-      socket.emit('error', { message: 'No table with that code' });
-      return;
-    }
-    if (game.state !== 'lobby') {
-      socket.emit('error', { message: 'That game has already started' });
-      return;
-    }
-    if (game.players.length >= maxPlayersFor(game)) {
-      socket.emit('error', { message: 'That table is full' });
-      return;
-    }
-    if (playerIndexOf(game, socket.id) !== -1) return;
 
+  socket.on('join_game', async ({ gameId, playerName, password } = {}) => {
+    const code = String(gameId || '').trim().toUpperCase();
+    // Why this table can't be joined right now, or null
+    const problem = () => {
+      const g = games.get(code);
+      if (!g) return 'No table with that code';
+      if (g.state !== 'lobby') return 'That game has already started';
+      if (g.players.length >= maxPlayersFor(g)) return 'That table is full';
+      if (seatedAnywhere(socket.id)) return 'Leave your current table first';
+      return null;
+    };
+    let err = problem();
+    if (err) { socket.emit('error', { message: err }); return; }
+
+    const locked = games.get(code).password;
+    if (locked) {
+      const pw = String(password || '').trim().slice(0, 32);
+      if (!pw) { socket.emit('join_denied', { gameId: code, reason: 'password_required' }); return; }
+      const ip = clientIp(socket);
+      if (lockedOut(ip)) {
+        socket.emit('error', { message: 'Too many wrong passwords. Try again in a minute' });
+        return;
+      }
+      let ok = false;
+      try { ok = await checkPassword(pw, locked); } catch (e) { ok = false; }
+      if (!ok) {
+        noteMiss(ip);
+        socket.emit('join_denied', { gameId: code, reason: 'wrong_password' });
+        return;
+      }
+      failedJoins.delete(ip);
+      // The table may have changed while the password was being checked
+      err = problem();
+      if (err) { socket.emit('error', { message: err }); return; }
+    }
+
+    const game = games.get(code);
     const playerIndex = game.players.length;
     const token = crypto.randomUUID();
-    game.players.push({ id: socket.id, token, name: playerName, ready: false, connected: true });
+    game.players.push({ id: socket.id, token, name: cleanName(playerName), ready: false, connected: true });
     playerSockets.set(socket.id, socket);
     socket.join(code);
-    console.log('Player joined lobby:', code, playerName, `${game.players.length}/${maxPlayersFor(game)}`);
+    console.log('Player joined lobby:', code, `${game.players.length}/${maxPlayersFor(game)}`);
     socket.emit('game_joined', { gameId: code, playerIndex, gameType: game.gameType, token });
     broadcastGameState(game);
+    publishLobby();
   });
 
   socket.on('set_ready', ({ gameId, ready }) => {
@@ -749,6 +880,7 @@ io.on('connection', (socket) => {
     socket.join(code);
     console.log('Player rejoined:', code, p.name);
     broadcastGameState(game);
+    publishLobby();
   });
 
   socket.on('bid', ({ gameId, bid }) => {
@@ -954,6 +1086,7 @@ io.on('connection', (socket) => {
       startGrace(game, p.token);
       broadcastGameState(game);
     }
+    publishLobby();
   });
 });
 
