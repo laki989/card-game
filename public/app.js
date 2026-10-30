@@ -269,7 +269,8 @@ function Icon({ name, size = 18 }) {
     download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>,
     globe: <><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></>,
     languages: <><path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" /></>,
-    chevron: <path d="m9 18 6-6-6-6" />
+    chevron: <path d="m9 18 6-6-6-6" />,
+    lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>
   };
   return (
     <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -932,19 +933,61 @@ function Chat({ messages, me, onSend, unread, open, setOpen, placement }) {
 // HOME
 // ============================================================================
 
-function Home({ onCreate, onJoin }) {
+function PasswordPrompt({ host, wrong, onSubmit, onClose }) {
+  const { t } = useApp();
+  const [pw, setPw] = useState('');
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="prompt" onClick={onClose}>
+      <form className="modal prompt__box" role="dialog" aria-label={t('passwordTitle')} onClick={e => e.stopPropagation()}
+        onSubmit={e => { e.preventDefault(); if (pw.trim()) onSubmit(pw.trim()); }}>
+        <div className="modal__head">
+          <div>
+            <h2 className="modal__title">{t('passwordTitle')}</h2>
+            <div className="modal__sub">{host ? t('passwordSub', { name: host }) : t('passwordSubAnon')}</div>
+          </div>
+          <IconButton icon="x" label={t('close')} type="button" onClick={onClose} />
+        </div>
+        <label className="field">
+          <span className="field__label">{t('passwordField')}</span>
+          <input className={`input ${wrong ? 'input--error' : ''}`} value={pw} maxLength={32} autoFocus autoComplete="off" spellCheck="false"
+            onChange={e => setPw(e.target.value)} />
+          {wrong && <span className="field__error">{t('wrongPassword')}</span>}
+        </label>
+        <div className="modal__actions">
+          <Button variant="secondary" type="button" onClick={onClose}>{t('cancel')}</Button>
+          <Button type="submit" disabled={!pw.trim()}>{t('join')}</Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Home({ tables, invite, denied, onDismissInvite, onCreate, onJoin }) {
   const { mobile, t, openDonate } = useApp();
   const [name, setName] = useState(loadPref('name', ''));
   const [game, setGame] = useState('mexico');
   const [mode, setMode] = useState('fixed');
-  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
   const [nameError, setNameError] = useState(false);
+  const [prompt, setPrompt] = useState(null); // { id, wrong, n }
+
+  // The server asks for a password (invite link) or says the one given was wrong
+  useEffect(() => {
+    if (denied) setPrompt({ id: denied.gameId, wrong: denied.reason === 'wrong_password', n: denied.ts });
+  }, [denied]);
 
   const withName = fn => {
     if (!name.trim()) { setNameError(true); return; }
     savePref('name', name.trim());
     fn(name.trim());
   };
+  const joinTable = tb => withName(n => (tb.locked ? setPrompt({ id: tb.id, wrong: false, n: Date.now() }) : onJoin(tb.id, n)));
+  const promptTable = prompt && tables.find(x => x.id === prompt.id);
 
   const fan = [['A', 'hearts', -28], ['K', 'bells', -14], ['Q', 'leaves', 0], ['J', 'acorns', 14], ['10', 'hearts', 28]];
   const spread = mobile ? 30 : 74;
@@ -980,6 +1023,45 @@ function Home({ onCreate, onJoin }) {
           {nameError && <span className="field__error">{t('nameMissing')}</span>}
         </label>
 
+        {invite && (
+          <div className="invite">
+            <div className="invite__text">
+              <b>{t('invitedTitle')}</b>
+              <span>{t('invitedSub', { code: invite })}</span>
+            </div>
+            <Button onClick={() => withName(n => onJoin(invite, n))}>{t('joinTable')}</Button>
+            <IconButton icon="x" label={t('close')} onClick={onDismissInvite} />
+          </div>
+        )}
+
+        <section className="tables" aria-label={t('openTables')}>
+          <div className="tables__head">
+            <span className="field__label">{t('openTables')}</span>
+            <span className="tables__count">{tables.length}</span>
+          </div>
+          {tables.length === 0 ? (
+            <div className="tables__empty">{t('noTables')}</div>
+          ) : (
+            <div className="tables__list">
+              {tables.map(tb => {
+                const g = GAMES[tb.gameType];
+                return (
+                  <button type="button" key={tb.id} className="table-row" onClick={() => joinTable(tb)}>
+                    <span className="table-row__suits">{g.suits.map(s => <SuitIcon key={s} suit={s} size={20} />)}</span>
+                    <span className="table-row__main">
+                      <b>{g.name}</b>
+                      <span>{t('hostedBy', { name: tb.host })}{tb.mode ? ` · ${t(tb.mode === 'choice' ? 'firstChooses' : 'fixedOrder')}` : ''}</span>
+                    </span>
+                    {tb.locked && <span className="table-row__lock" title={t('lockedTable')}><Icon name="lock" size={15} /></span>}
+                    <span className="table-row__seats">{tb.seats}/{tb.max}</span>
+                    <span className="table-row__join">{t('join')}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         <div className="field">
           <span className="field__label">{t('game')}</span>
           <div className="tiles">
@@ -1006,21 +1088,16 @@ function Home({ onCreate, onJoin }) {
           </div>
         )}
 
+        <label className="field">
+          <span className="field__label">{t('passwordOptional')}</span>
+          <input className="input" value={password} maxLength={32} autoComplete="off" spellCheck="false"
+            placeholder={t('passwordPlaceholder')} onChange={e => setPassword(e.target.value)} />
+        </label>
+
         <div className="home__actions">
-          <Button className="home__create" onClick={() => withName(n => onCreate(n, { gameType: game, contractMode: game === 'lorum' ? mode : null }))}>
+          <Button className="home__create" onClick={() => withName(n => onCreate(n, { gameType: game, contractMode: game === 'lorum' ? mode : null, password: password.trim() || undefined }))}>
             {t('createTable', { game: GAMES[game].name })}
           </Button>
-          <div className="join">
-            <input
-              className="input input--code"
-              value={code}
-              maxLength={6}
-              placeholder={t('tableCode')}
-              onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-              onKeyDown={e => { if (e.key === 'Enter' && code) withName(n => onJoin(code, n)); }}
-            />
-            <Button variant="secondary" disabled={!code} onClick={() => withName(n => onJoin(code, n))}>{t('join')}</Button>
-          </div>
         </div>
 
         <button type="button" className="home__donate" onClick={openDonate}>
@@ -1029,6 +1106,12 @@ function Home({ onCreate, onJoin }) {
           <b>{t('buyCreatorRound')}</b>
         </button>
       </div>
+
+      {prompt && (
+        <PasswordPrompt key={prompt.n} host={promptTable?.host} wrong={prompt.wrong}
+          onClose={() => setPrompt(null)}
+          onSubmit={pw => withName(n => onJoin(prompt.id, n, pw))} />
+      )}
     </div>
   );
 }
@@ -1066,8 +1149,8 @@ function Lobby({ gs, me, onReady, onStart, onLeave }) {
       <h1 className="lobby-center__title">{allIn ? t('everyoneHere') : t('seatedOf', { n, max })}</h1>
       <div className="code-box">
         <span className="code-box__value">{gs.gameId}</span>
-        <button type="button" className="code-box__copy" onClick={() => copyText(gs.gameId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}>
-          <Icon name={copied ? 'check' : 'copy'} size={14} />{copied ? t('copied') : t('copy')}
+        <button type="button" className="code-box__copy" onClick={() => copyText(`${window.location.origin}/?join=${gs.gameId}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}>
+          <Icon name={copied ? 'check' : 'copy'} size={14} />{copied ? t('copied') : t('copyLink')}
         </button>
       </div>
       <div className="lobby-center__hint">{hint}</div>
@@ -1652,6 +1735,19 @@ function App() {
   const setLang = l => { setLangState(l); savePref('lang', l); };
   const i18n = useMemo(() => makeI18n(lang), [lang]);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [tables, setTables] = useState([]);
+  const [denied, setDenied] = useState(null);
+  // /?join=CODE opens the start screen ready to join that table
+  const [invite, setInvite] = useState(() => {
+    try {
+      const c = new URLSearchParams(window.location.search).get('join');
+      return (c && c.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)) || null;
+    } catch (e) { return null; }
+  });
+  const dismissInvite = () => {
+    setInvite(null);
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* ignore */ }
+  };
 
   const [socket, setSocket] = useState(null);
   const [gs, setGs] = useState(null);
@@ -1666,6 +1762,19 @@ function App() {
   useEffect(() => { chatOpenRef.current = chatOpen; if (chatOpen) setUnread(0); }, [chatOpen]);
   useEffect(() => { document.body.classList.toggle('is-mobile', mobile); }, [mobile]);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+  useEffect(() => { if (gs && invite) dismissInvite(); }, [gs]);
+
+  // The start screen shows the open tables live; stop listening once seated
+  useEffect(() => {
+    if (!socket || gs) return undefined;
+    const subscribe = () => socket.emit('lobby_subscribe');
+    subscribe();
+    socket.on('connect', subscribe);
+    return () => {
+      socket.off('connect', subscribe);
+      socket.emit('lobby_unsubscribe');
+    };
+  }, [socket, !!gs]);
 
   const showError = msg => {
     setError(msg);
@@ -1701,6 +1810,8 @@ function App() {
       setGs(null);
       showError('That table is no longer open');
     });
+    s.on('lobby_list', list => setTables(list));
+    s.on('join_denied', d => setDenied({ ...d, ts: Date.now() }));
     s.on('error', ({ message }) => showError(message));
     s.on('chat_message', m => {
       setMessages(prev => [...prev, m]);
@@ -1740,8 +1851,9 @@ function App() {
 
   let screen;
   if (!gs) {
-    screen = <Home onCreate={(playerName, gameConfig) => socket.emit('create_game', { playerName, gameConfig })}
-      onJoin={(gameId, playerName) => socket.emit('join_game', { gameId, playerName })} />;
+    screen = <Home tables={tables} invite={invite} denied={denied} onDismissInvite={dismissInvite}
+      onCreate={(playerName, gameConfig) => socket.emit('create_game', { playerName, gameConfig })}
+      onJoin={(gameId, playerName, password) => socket.emit('join_game', { gameId, playerName, password })} />;
   } else if (gs.state === 'abandoned') {
     screen = (
       <div className="home home--center">
