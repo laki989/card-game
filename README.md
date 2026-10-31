@@ -65,3 +65,9 @@ The receipt (header button, menu, start screen, game over) shows three fixed rou
 | `PORT` | `3000` | Server port |
 | `TRICK_DELAY_MS` | `3000` | How long a finished trick stays on the table |
 | `RECONNECT_GRACE_MS` | `120000` | How long a dropped player's seat is held |
+
+## Lorum scoring notes
+
+- A deal with a goal (Queens, Hearts, Jack of Acorns, King of Hearts) ends as soon as the goal is met; the remaining tricks are not played.
+- Jack of Acorns: the taker gets +4 and the player seated across gets +4.
+- Lora: -1 for each column you close (play its 8th card). Going out with a starting-rank card (one that opens a column) scores -16 instead of -8.

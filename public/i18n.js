@@ -82,6 +82,7 @@ window.I18N = {
     themeWood: 'Wooden table',
     buyRound: 'Buy a round',
     close: 'Close',
+    dealEnds: 'Goal reached, deal ends',
     youTake: 'You take the trick',
     theyTake: '{name} takes the trick',
     yourLead: 'Your lead',
@@ -294,6 +295,7 @@ window.I18N = {
     themeWood: 'Drveni sto',
     buyRound: 'Časti turu',
     close: 'Zatvori',
+    dealEnds: 'Cilj ispunjen, deli se završava',
     youTake: 'Ti nosiš štih',
     theyTake: '{name} nosi štih',
     yourLead: 'Ti igraš prvi',
@@ -444,13 +446,13 @@ window.I18N_SUITS = {
 window.I18N_CONTRACTS = {
   en: [
     ['Minimum', '+1 per trick'], ['Maximum', '0–1 tricks = +8'], ['Queens', '+2 per queen'],
-    ['Hearts', '+1 each, all 8 = −8'], ['Jack of Acorns', '+8 if you take it'],
-    ['King of Hearts', '+8 if you take it'], ['Lora', 'Lay out, first out −8']
+    ['Hearts', '+1 each, all 8 = −8'], ['Jack of Acorns', '+4 you and +4 player across'],
+    ['King of Hearts', '+8 if you take it'], ['Lora', 'First out −8 (−16 on a starting card), −1 per closed column']
   ],
   sr: [
     ['Minimum', '+1 po štihu'], ['Maksimum', '0–1 štih = +8'], ['Dame', '+2 po dami'],
-    ['Srca', '+1 po srcu, svih 8 = −8'], ['Žandar žir', '+8 ako ga uzmeš'],
-    ['Kralj srce', '+8 ako ga uzmeš'], ['Lora', 'Ređanje, prvi gotov −8']
+    ['Srca', '+1 po srcu, svih 8 = −8'], ['Žandar žir', '+4 ti i +4 igrač preko puta'],
+    ['Kralj srce', '+8 ako ga uzmeš'], ['Lora', 'Prvi gotov −8 (−16 starter), −1 po zatvorenoj koloni']
   ]
 };
 

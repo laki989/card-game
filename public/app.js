@@ -1599,7 +1599,7 @@ function LorumGame({ socket, gs, me, isHost, onLeave }) {
     switch (gs.currentContract) {
       case 3: { const q = tr.filter(p => p.card.rank === 'Q').length; return q ? [pl(q, 'queen'), `+${q * 2}`] : null; }
       case 4: { const h = tr.filter(p => p.card.suit === 'hearts').length; return h ? [pl(h, 'heart'), `+${h}`] : null; }
-      case 5: return tr.some(p => p.card.suit === 'acorns' && p.card.rank === 'J') ? [contractOf(5).name, '+8'] : null;
+      case 5: return tr.some(p => p.card.suit === 'acorns' && p.card.rank === 'J') ? [contractOf(5).name, '+4 / +4'] : null;
       case 6: return tr.some(p => p.card.suit === 'hearts' && p.card.rank === 'K') ? [contractOf(6).name, '+8'] : null;
       default: return null;
     }
@@ -1668,7 +1668,7 @@ function LorumGame({ socket, gs, me, isHost, onLeave }) {
         )}
         {gs.state === 'trick_complete' && gs.lastTrickWinner !== null && (
           <WinnerBanner top={556}
-            text={`${gs.lastTrickWinner === me ? t('youTake') : t('theyTake', { name: name(gs.lastTrickWinner) })}${cost ? ` · ${cost[0]}` : ''}`}
+            text={`${gs.lastTrickWinner === me ? t('youTake') : t('theyTake', { name: name(gs.lastTrickWinner) })}${cost ? ` · ${cost[0]}` : ''}${gs.dealOver ? ` · ${t('dealEnds')}` : ''}`}
             extra={cost ? cost[1] : null} />
         )}
       </>

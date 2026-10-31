@@ -521,6 +521,8 @@ function getPlayerGameState(game, playerIndex) {
       loraLayout: game.loraLayout,
       loraStartRank: game.loraStartRank,
       loraPasses: game.loraPasses,
+      loraClosed: game.loraClosed,
+      dealOver: game.state === 'trick_complete' && require('./lorumGame').goalReached(game),
       contractScores: game.contractScores,
       gameHistory: game.gameHistory
     };
