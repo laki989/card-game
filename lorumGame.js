@@ -49,6 +49,7 @@ function createLorumGame(gameId, contractMode) {
     },
     loraStartRank: null,
     loraPasses: [0, 0, 0, 0], // Track skips
+    loraClosed: [0, 0, 0, 0], // Columns each player closed (the 8th card of a suit)
     
     // Scoring
     scores: [0, 0, 0, 0], // Cumulative scores
@@ -83,6 +84,7 @@ function startLorumDeal(game) {
   game.lastTrickWinner = null;
   game.runningScores = [0, 0, 0, 0];
   game.loraPasses = [0, 0, 0, 0];
+  game.loraClosed = [0, 0, 0, 0];
   game.loraLayout = { acorns: [], leaves: [], hearts: [], bells: [] };
   game.loraStartRank = null;
   
@@ -193,11 +195,36 @@ function completeLorumTrick(game) {
   return { needsDelay: true, winner };
 }
 
+// A deal ends as soon as its goal card(s) have been taken: nothing left to
+// win or lose, so there is no need to play out the remaining tricks.
+// (Minimum and Maximum have no goal and are always played to the end.)
+function goalReached(game) {
+  switch (game.currentContract) {
+    case 3: return game.queensTaken.reduce((a, b) => a + b, 0) >= 4;
+    case 4: return game.heartsTaken.reduce((a, b) => a + b, 0) >= 8;
+    case 5: return game.hasJackOfClubs !== -1;
+    case 6: return game.hasKingOfHearts !== -1;
+    default: return false;
+  }
+}
+
+// The Jack of Acorns is shared: whoever takes it and the player sitting across
+function jackShares(game) {
+  const shares = [0, 0, 0, 0];
+  const taker = game.hasJackOfClubs;
+  if (taker !== -1) {
+    shares[taker] += 4;
+    shares[(taker + 2) % 4] += 4;
+  }
+  return shares;
+}
+
 function continueLorumAfterTrick(game) {
+  if (game.state !== 'trick_complete') return;
   const winner = game.lastTrickWinner;
   
   // Check if round is over
-  if (game.hands[0].length === 0) {
+  if (game.hands[0].length === 0 || goalReached(game)) {
     scoreLorumContract(game);
     advanceLorumDeal(game);
   } else {
@@ -225,7 +252,7 @@ function playLoraCard(game, playerIndex, card) {
     hand.splice(cardIndex, 1);
     
     if (hand.length === 0) {
-      scoreLoraContract(game);
+      scoreLoraContract(game, false);
       advanceLorumDeal(game);
     } else {
       game.currentPlayer = (game.currentPlayer + 1) % 4;
@@ -255,9 +282,13 @@ function playLoraCard(game, playerIndex, card) {
   suitPile.push(card);
   hand.splice(cardIndex, 1);
   
-  // Check if player finished
+  // Playing the 8th card of a suit closes that column: -1 for whoever did it
+  if (suitPile.length === 8) game.loraClosed[playerIndex]++;
+  
+  // Check if player finished. Going out with a starting-rank card (one that
+  // opens a column) counts double.
   if (hand.length === 0) {
-    scoreLoraContract(game);
+    scoreLoraContract(game, card.rank === game.loraStartRank);
     advanceLorumDeal(game);
   } else {
     game.currentPlayer = (game.currentPlayer + 1) % 4;
@@ -318,10 +349,8 @@ function calculateRunningScores(game) {
       }
       break;
       
-    case 5: // Jack of Clubs
-      if (game.hasJackOfClubs !== -1) {
-        runningScores[game.hasJackOfClubs] = 8;
-      }
+    case 5: // Jack of Acorns: +4 for the taker and +4 for the player across
+      jackShares(game).forEach((v, i) => { runningScores[i] = v; });
       break;
       
     case 6: // King of Hearts
@@ -367,10 +396,8 @@ function scoreLorumContract(game) {
       }
       break;
       
-    case 5: // Jack of Clubs - +8 for taking it
-      if (game.hasJackOfClubs !== -1) {
-        contractScores[game.hasJackOfClubs] = 8;
-      }
+    case 5: // Jack of Acorns - +4 for the taker, +4 for the player across
+      jackShares(game).forEach((v, i) => { contractScores[i] = v; });
       break;
       
     case 6: // King of Hearts - +8 for taking it
@@ -394,7 +421,7 @@ function scoreLorumContract(game) {
   });
 }
 
-function scoreLoraContract(game) {
+function scoreLoraContract(game, doubled) {
   const contractScores = [0, 0, 0, 0];
   
   // Find who finished (has 0 cards)
@@ -406,14 +433,19 @@ function scoreLoraContract(game) {
     }
   }
   
-  // Finisher gets -8
-  contractScores[finisher] = -8;
+  // Finisher gets -8 (-16 when going out with a starting-rank card)
+  contractScores[finisher] = doubled ? -16 : -8;
   
   // Others get +1 per card left + +1 per pass
   for (let i = 0; i < 4; i++) {
     if (i !== finisher) {
       contractScores[i] = game.hands[i].length + game.loraPasses[i];
     }
+  }
+  
+  // -1 for every column a player closed
+  for (let i = 0; i < 4; i++) {
+    contractScores[i] -= game.loraClosed[i];
   }
   
   // Add to cumulative scores
@@ -427,6 +459,8 @@ function scoreLoraContract(game) {
     contract: 7,
     scores: contractScores,
     passes: [...game.loraPasses],
+    closed: [...game.loraClosed],
+    doubled: !!doubled,
     totalScores: [...game.scores]
   });
 }
@@ -495,5 +529,6 @@ module.exports = {
   playLorumCard,
   playLoraCard,
   passLoraPlay,
-  continueLorumAfterTrick
+  continueLorumAfterTrick,
+  goalReached
 };
