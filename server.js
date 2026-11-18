@@ -21,6 +21,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // How long a finished trick stays on the table (ms)
 const TRICK_DELAY = Number(process.env.TRICK_DELAY_MS) || 3000;
+// How long the round result stays on the table before the next deal
+const ROUND_DELAY = Number(process.env.ROUND_DELAY_MS) || 5000;
 
 // Game state
 const games = new Map();
@@ -100,6 +102,7 @@ function createGame(gameId) {
 
 function startBidding(game) {
   game.state = 'bidding';
+  // Play goes counter-clockwise: the player on the dealer's right opens
   game.currentPlayer = (game.currentDealer + 1) % 3;
   game.bids = [null, null, null];
   game.passedPlayers = [false, false, false];
@@ -126,10 +129,8 @@ function handleBid(game, playerIndex, bid) {
   const isFirstPlayer = playerIndex === (game.currentDealer + 1) % 3;
   
   if (bid === 'pass') {
-    // First player (left of dealer) CANNOT pass
-    if (isFirstBid && isFirstPlayer) {
-      return { success: false, error: 'First player cannot pass - must bid 5 or higher' };
-    }
+    // The first player holds the bid of 5 by default: passing keeps it, and
+    // if everybody else passes too he plays the round for 5.
     game.passedPlayers[playerIndex] = true;
     game.bids[playerIndex] = 'pass';
   } else if (bid === 'betl') {
@@ -141,14 +142,9 @@ function handleBid(game, playerIndex, bid) {
   } else {
     const numericBid = bid === 'mexico' ? 20 : parseInt(bid);
     
-    // First player must bid at least 5
-    if (isFirstBid && numericBid < 5) {
-      return { success: false, error: 'First bid must be at least 5' };
-    }
-    
-    // Others cannot bid 5 (must pass or 6+)
-    if (!isFirstBid && numericBid === 5) {
-      return { success: false, error: 'Cannot bid 5 after first player - must bid 6 or higher' };
+    // Nobody bids 5 (the first player gets it by passing): 6 or higher
+    if (!(numericBid >= 6)) {
+      return { success: false, error: 'Bid must be 6 or higher' };
     }
     
     // Handle Betl in current bids
@@ -168,9 +164,14 @@ function handleBid(game, playerIndex, bid) {
     game.bids[playerIndex] = bid;
   }
   
-  // Check if bidding is over (2 players passed or mexico bid)
+  // Bidding is over on Mexico, when all three have passed, or when only one
+  // player is left and he has already bid (a player who has not acted yet
+  // always gets his turn)
   const passCount = game.passedPlayers.filter(p => p).length;
-  if (passCount === 2 || bid === 'mexico') {
+  const lastLeft = game.passedPlayers.findIndex(p => !p);
+  const biddingDone = bid === 'mexico' || passCount === 3 ||
+    (passCount === 2 && game.bids[lastLeft] !== null);
+  if (biddingDone) {
     // Find bid winner
     let highestBid = -1;
     let winner = -1;
@@ -192,6 +193,13 @@ function handleBid(game, playerIndex, bid) {
       }
     }
     
+    // Everybody passed: the first player plays the round for 5
+    if (winner === -1) {
+      winner = (game.currentDealer + 1) % 3;
+      game.bids[winner] = 5;
+      game.passedPlayers[winner] = false;
+    }
+    
     game.bidWinner = winner;
     game.isBetl = isBetl;
     
@@ -209,8 +217,10 @@ function handleBid(game, playerIndex, bid) {
       broadcastGameState(game);
     }
   } else {
-    // Move to next player
-    game.currentPlayer = (game.currentPlayer + 1) % 3;
+    // Next player (counter-clockwise), skipping anyone who has passed
+    let next = (game.currentPlayer + 1) % 3;
+    while (game.passedPlayers[next]) next = (next + 1) % 3;
+    game.currentPlayer = next;
     broadcastGameState(game);
   }
   
@@ -401,12 +411,14 @@ function endRound(game) {
     }
   } else {
     // Normal scoring
-    const numericBid = bidValue === 'mexico' ? 10 : parseInt(bidValue);
-    
-    if (tricksTaken >= numericBid) {
+    if (bidValue === 'mexico') {
+      // Mexico: +20 for taking every trick, otherwise -20
+      roundScores[bidWinner] = tricksTaken === 10 ? 20 : -20;
+    } else if (tricksTaken >= parseInt(bidValue)) {
       // Bid winner succeeded
       roundScores[bidWinner] = tricksTaken;
     } else {
+      const numericBid = parseInt(bidValue);
       // Bid winner failed
       roundScores[bidWinner] = -numericBid;
     }
@@ -437,16 +449,29 @@ function endRound(game) {
     rounds: [...game.roundHistory]
   });
   
-  // Check for winner
-  if (game.scores.some(s => s >= 101)) {
-    game.state = 'finished';
-    broadcastGameState(game);
-  } else {
-    // Next round
-    game.currentDealer = (game.currentDealer + 1) % 3;
-    game.roundHistory = [];
-    startNewRound(game);
-  }
+  // Show the result for a few seconds, then finish or deal the next round
+  game.lastRound = {
+    bidWinner,
+    bid: game.bids[bidWinner],
+    isBetl: !!game.isBetl,
+    made: roundScores[bidWinner] > 0,
+    tricksTaken: [...game.tricksTaken],
+    roundScores: [...roundScores]
+  };
+  game.state = 'round_over';
+  broadcastGameState(game);
+  setTimeout(() => {
+    if (game.state !== 'round_over') return;
+    game.lastRound = null;
+    if (game.scores.some(s => s >= 51)) {
+      game.state = 'finished';
+      broadcastGameState(game);
+    } else {
+      game.currentDealer = (game.currentDealer + 1) % 3;
+      game.roundHistory = [];
+      startNewRound(game);
+    }
+  }, ROUND_DELAY);
 }
 
 function startNewRound(game) {
@@ -487,7 +512,7 @@ function getPlayerGameState(game, playerIndex) {
   const baseState = {
     gameId: game.id,
     gameType: game.gameType,
-    players: game.players.map(p => ({ name: p.name, ready: !!p.ready, connected: p.connected !== false })),
+    players: game.players.map(p => ({ name: p.name, ready: !!p.ready, connected: p.connected !== false, avatar: p.avatar || null })),
     playerIndex: playerIndex,
     hostIndex: 0,
     maxPlayers: maxPlayersFor(game),
@@ -538,11 +563,22 @@ function getPlayerGameState(game, playerIndex) {
       currentTrick: game.currentTrick,
       tricksTaken: game.tricksTaken,
       gameHistory: game.gameHistory,
-      lastTrickWinner: game.lastTrickWinner ?? null
+      lastTrickWinner: game.lastTrickWinner ?? null,
+      lastRound: game.state === 'round_over' ? game.lastRound : null
     };
   }
 }
 
+
+// Profile pictures live in public/img/avatars/profile-01..08.jpg. Each seat at
+// a table gets a random one nobody else at that table is using.
+const AVATAR_COUNT = 8;
+function pickAvatar(game) {
+  const taken = new Set(game.players.map(p => p.avatar));
+  const free = [];
+  for (let i = 1; i <= AVATAR_COUNT; i++) if (!taken.has(i)) free.push(i);
+  return free[Math.floor(Math.random() * free.length)] || null;
+}
 
 function maxPlayersFor(game) {
   return game.gameType === 'lorum' ? 4 : 3;
@@ -759,7 +795,7 @@ io.on('connection', (socket) => {
     game.password = stored;
 
     const token = crypto.randomUUID();
-    game.players.push({ id: socket.id, token, name: cleanName(playerName), ready: true, connected: true });
+    game.players.push({ id: socket.id, token, name: cleanName(playerName), avatar: pickAvatar(game), ready: true, connected: true });
     games.set(gameId, game);
     playerSockets.set(socket.id, socket);
 
@@ -809,7 +845,7 @@ io.on('connection', (socket) => {
     const game = games.get(code);
     const playerIndex = game.players.length;
     const token = crypto.randomUUID();
-    game.players.push({ id: socket.id, token, name: cleanName(playerName), ready: false, connected: true });
+    game.players.push({ id: socket.id, token, name: cleanName(playerName), avatar: pickAvatar(game), ready: false, connected: true });
     playerSockets.set(socket.id, socket);
     socket.join(code);
     console.log('Player joined lobby:', code, `${game.players.length}/${maxPlayersFor(game)}`);
@@ -1056,6 +1092,12 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: result.error });
     } else {
       broadcastGameState(game);
+      if (game.state === 'lora_complete') {
+        setTimeout(() => {
+          lorumGame.finishLoraDeal(game);
+          broadcastGameState(game);
+        }, 2500);
+      }
     }
   });
   

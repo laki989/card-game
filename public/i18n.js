@@ -39,7 +39,6 @@ window.I18N = {
 
 
     createTable: 'Create {game} table',
-    tableCode: 'Table code',
     join: 'Join',
     enjoying: 'Enjoying the game?',
     buyCreatorRound: 'Buy the creator a round',
@@ -53,7 +52,6 @@ window.I18N = {
     seatedOf: '{n} of {max} seated',
     copy: 'Copy',
     copied: 'Copied',
-    copyCode: 'Copy table code',
     hintShare: 'Waiting for {more}. This table is listed on the start screen.',
     hintReady: 'Waiting for {names} to get ready.',
     hintHostGo: 'Everyone is ready. Deal when you like.',
@@ -80,9 +78,19 @@ window.I18N = {
     themeFelt: 'Green felt',
     themeKafana: 'Kafana cloth',
     themeWood: 'Wooden table',
+    themeBlue: 'Blue baize',
+    themeRed: 'Red baize',
+    swFelt: 'Felt', swBlue: 'Blue', swRed: 'Red', swKafana: 'Kafana', swWood: 'Wood',
+    cards: 'Cards',
+    deckHungarian: 'Hungarian',
+    deckHungarianSub: 'Illustrated',
+    deckFrench: 'French',
     buyRound: 'Buy a round',
     close: 'Close',
     dealEnds: 'Goal reached, deal ends',
+    roundOver: 'Round over',
+    roundMade: 'Made it',
+    roundDown: 'Went down',
     youTake: 'You take the trick',
     theyTake: '{name} takes the trick',
     yourLead: 'Your lead',
@@ -106,7 +114,7 @@ window.I18N = {
     noBidsYet: 'No bids yet',
     bidBy: '{bid} by {name}',
     betlByName: 'Betl by {name}',
-    youOpen: 'You open. Bid 5 or more.',
+    youOpen: 'You open. Bid 6 or more, or pass to play for 5.',
     yourTurnBid: 'Your turn. Raise, go Betl, or pass.',
     youPassed: 'You passed. ',
     waitingBid: 'Waiting for {name} to bid.',
@@ -168,7 +176,7 @@ window.I18N = {
     // Game over
     winsGame: '{name} wins {game}',
     lorumWinSub: 'Lowest score after 28 deals: {s}',
-    mexicoWinSub: 'First to 101 points: {s}',
+    mexicoWinSub: 'First to 51 points: {s}',
     playAgain: 'Play again',
     waitingRestart: 'Waiting for {name} to start another game',
     nudgeTitle: 'Good game? Buy the creator a round and support the game.',
@@ -182,7 +190,7 @@ window.I18N = {
     tierCoffee: 'A coffee',
     tierBeer: 'A beer',
     tierTwoBeers: 'Two beers',
-    tierCase: 'A case',
+    tierCase: 'A custom round',
     total: 'Total',
     scanBank: 'Scan with your banking app',
     payTo: 'TO: {v}',
@@ -254,7 +262,6 @@ window.I18N = {
 
 
     createTable: 'Napravi {game} sto',
-    tableCode: 'Kod stola',
     join: 'Uđi',
     enjoying: 'Sviđa ti se igra?',
     buyCreatorRound: 'Časti autora turom',
@@ -267,7 +274,6 @@ window.I18N = {
     seatedOf: 'Za stolom {n} od {max}',
     copy: 'Kopiraj',
     copied: 'Kopirano',
-    copyCode: 'Kopiraj kod stola',
     hintShare: 'Čeka se još {more}. Sto je na listi na početnom ekranu.',
     hintReady: 'Čeka se da budu spremni: {names}.',
     hintHostGo: 'Svi su spremni. Deli kad hoćeš.',
@@ -293,9 +299,19 @@ window.I18N = {
     themeFelt: 'Zelena čoja',
     themeKafana: 'Kafanski stolnjak',
     themeWood: 'Drveni sto',
+    themeBlue: 'Plava čoja',
+    themeRed: 'Crvena čoja',
+    swFelt: 'Zelena', swBlue: 'Plava', swRed: 'Crvena', swKafana: 'Kafana', swWood: 'Drvo',
+    cards: 'Karte',
+    deckHungarian: 'Mađarske',
+    deckHungarianSub: 'Ilustrovane',
+    deckFrench: 'Francuske',
     buyRound: 'Časti turu',
     close: 'Zatvori',
     dealEnds: 'Cilj ispunjen, deli se završava',
+    roundOver: 'Kraj runde',
+    roundMade: 'Ispunjeno',
+    roundDown: 'Pao',
     youTake: 'Ti nosiš štih',
     theyTake: '{name} nosi štih',
     yourLead: 'Ti igraš prvi',
@@ -318,7 +334,7 @@ window.I18N = {
     noBidsYet: 'Još nema zvanja',
     bidBy: '{bid} · {name}',
     betlByName: 'Betl · {name}',
-    youOpen: 'Ti otvaraš. Zovi 5 ili više.',
+    youOpen: 'Ti otvaraš. Zovi 6 ili više, ili dalje pa igraš za 5.',
     yourTurnBid: 'Tvoj red. Podigni, igraj betl ili reci dalje.',
     youPassed: 'Rekao si dalje. ',
     waitingBid: 'Čeka se zvanje: {name}.',
@@ -378,7 +394,7 @@ window.I18N = {
 
     winsGame: 'Pobeda: {name}',
     lorumWinSub: 'Najmanje poena posle 28 deljenja: {s}',
-    mexicoWinSub: 'Prvi do 101 poena: {s}',
+    mexicoWinSub: 'Prvi do 51 poena: {s}',
     playAgain: 'Igraj ponovo',
     waitingRestart: 'Čeka se da {name} pokrene novu igru',
     nudgeTitle: 'Dobra partija? Časti autora turom i podrži igru.',
@@ -391,7 +407,7 @@ window.I18N = {
     tierCoffee: 'Kafa',
     tierBeer: 'Pivo',
     tierTwoBeers: 'Dva piva',
-    tierCase: 'Gajba piva',
+    tierCase: 'Tura po izboru',
     total: 'Ukupno',
     scanBank: 'Skeniraj u aplikaciji banke',
     payTo: 'PRIMALAC: {v}',
@@ -436,6 +452,11 @@ window.I18N_NOUNS = {
     card: ['karta', 'karte', 'karata'], trick: ['štih', 'štiha', 'štihova'], pass: ['preskok', 'preskoka', 'preskoka'],
     queen: ['dama', 'dame', 'dama'], heart: ['srce', 'srca', 'srca'], player: ['igrač', 'igrača', 'igrača']
   }
+};
+
+window.I18N_SUITS_FRENCH = {
+  en: { hearts: 'Hearts', bells: 'Diamonds', leaves: 'Spades', acorns: 'Clubs' },
+  sr: { hearts: 'Herc', bells: 'Karo', leaves: 'Pik', acorns: 'Tref' }
 };
 
 window.I18N_SUITS = {

@@ -71,3 +71,14 @@ The receipt (header button, menu, start screen, game over) shows three fixed rou
 - A deal with a goal (Queens, Hearts, Jack of Acorns, King of Hearts) ends as soon as the goal is met; the remaining tricks are not played.
 - Jack of Acorns: the taker gets +4 and the player seated across gets +4.
 - Lora: -1 for each column you close (play its 8th card). Going out with a starting-rank card (one that opens a column) scores -16 instead of -8.
+
+## Mexico rules notes
+
+- The game ends when a player reaches 51 points.
+- Mexico scores +20 if the caller takes every trick, otherwise -20.
+- The first player has no 5 button: passing keeps the default 5. If the other two pass as well, he plays the round for 5. Players who passed are skipped for the rest of the bidding.
+- Play goes counter-clockwise: the next player sits on your right.
+
+## Cards and tables
+
+The menu has a Cards choice (Hungarian illustrated or French) and five tables (green, blue and red baize, kafana cloth, wood). Both are remembered per browser.
