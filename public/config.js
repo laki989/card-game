@@ -7,6 +7,6 @@ window.DONATE_CONFIG = {
   purpose: 'Tura za autora igre',   // Svrha plaćanja sent in the QR (S:), max 35 characters
   eurRate: 117.2,                   // RSD per 1 EUR, only for the "≈ €" hint
   tiers: [100, 200, 500],           // A coffee, a beer, two beers (RSD)
-  customPlaceholder: 1500,          // Suggested amount in the "A case" field
+  customPlaceholder: 1500,          // Suggested amount in the "A custom round" field
   maxAmount: 1000000
 };

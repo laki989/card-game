@@ -20,10 +20,24 @@ const GAMES = {
 };
 
 const THEMES = [
-  { id: 'felt', label: 'themeFelt' },
-  { id: 'kafana', label: 'themeKafana' },
-  { id: 'wood', label: 'themeWood' }
+  { id: 'felt', label: 'themeFelt', short: 'swFelt' },
+  { id: 'blue', label: 'themeBlue', short: 'swBlue' },
+  { id: 'red', label: 'themeRed', short: 'swRed' },
+  { id: 'kafana', label: 'themeKafana', short: 'swKafana' },
+  { id: 'wood', label: 'themeWood', short: 'swWood' }
 ];
+// Green, blue and red baize share the oval dark-rimmed table; cloth and wood are rectangular
+const tableKind = th => (th === 'kafana' || th === 'wood' ? th : 'felt');
+
+// Card decks: the illustrated Hungarian pack, or a classic French look
+// (hearts and bells are the red suits, leaves and acorns the black ones)
+const DECKS = ['hungarian', 'french'];
+const FRENCH = {
+  hearts: { glyph: '\u2665', red: true },
+  bells: { glyph: '\u2666', red: true },
+  leaves: { glyph: '\u2660', red: false },
+  acorns: { glyph: '\u2663', red: false }
+};
 const LANGS = ['en', 'sr'];
 
 function sortHand(hand) {
@@ -71,6 +85,12 @@ function isLegalPlay(hand, trick, card, trump) {
 }
 
 const initial = name => (name || '?').trim().charAt(0).toUpperCase();
+
+// Profile picture for a seat; falls back to the first letter of the name
+function AvatarFace({ name, avatar }) {
+  if (!avatar) return initial(name);
+  return <img className="avatar-img" src={`/img/avatars/profile-${String(avatar).padStart(2, '0')}.jpg`} alt="" draggable="false" />;
+}
 const signed = n => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
 
 function copyText(text) {
@@ -112,7 +132,7 @@ function clearSession() {
 // LANGUAGE
 // ============================================================================
 
-function makeI18n(lang) {
+function makeI18n(lang, deck) {
   const dict = window.I18N[lang] || window.I18N.en;
   const t = (key, vars) => {
     let s = dict[key] ?? window.I18N.en[key] ?? key;
@@ -129,7 +149,7 @@ function makeI18n(lang) {
     }
     return `${n} ${n === 1 ? f[0] : f[1]}`;
   };
-  const suit = s => window.I18N_SUITS[lang][s];
+  const suit = s => (deck === 'french' ? window.I18N_SUITS_FRENCH : window.I18N_SUITS)[lang][s];
   const contract = id => {
     const c = window.I18N_CONTRACTS[lang][id - 1];
     return c ? { id, name: c[0], rule: c[1] } : null;
@@ -142,7 +162,7 @@ function makeI18n(lang) {
     if (back) return t('waitingForReconnect', { name: back[1] });
     return window.I18N_SERVER_SR[m] || m;
   };
-  return { lang, t, pl, suit, contract, serverMsg };
+  return { lang, deck, t, pl, suit, contract, serverMsg };
 }
 
 function defaultLang() {
@@ -241,7 +261,14 @@ const isMobileViewport = ({ w, h }) => w < 720 || (w < 900 && h > w);
 // ============================================================================
 
 function SuitIcon({ suit, size = 24, className = '' }) {
-  const { suit: suitName } = useI18n();
+  const { suit: suitName, deck } = useI18n();
+  if (deck === 'french') {
+    const f = FRENCH[suit];
+    return (
+      <span className={`suit-glyph ${f.red ? 'is-red' : 'is-black'} ${className}`} role="img" aria-label={suitName(suit)}
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.9) }}>{f.glyph}&#xFE0E;</span>
+    );
+  }
   return <img className={`suit-icon ${className}`} src={SUIT_IMG[suit]} alt={suitName(suit)} width={size} height={size} draggable={false} />;
 }
 
@@ -263,6 +290,7 @@ function Icon({ name, size = 18 }) {
     logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>,
     beer: <><path d="M17 11h1a3 3 0 0 1 0 6h-1" /><path d="M9 12v6" /><path d="M13 12v6" /><path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z" /><path d="M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /></>,
     coffee: <><path d="M10 2v2" /><path d="M14 2v2" /><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1" /><path d="M6 2v2" /></>,
+    pencil: <><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></>,
     package: <><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><path d="m3.3 7 7.7 4.73a2 2 0 0 0 2 0L20.7 7" /><path d="m7.5 4.27 9 5.15" /></>,
     heartHand: <><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /><path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.79 0l2.96 2.66" /><path d="m18 15-2-2" /><path d="m15 18-2-2" /></>,
     landmark: <><line x1="3" y1="22" x2="21" y2="22" /><line x1="6" y1="18" x2="6" y2="11" /><line x1="10" y1="18" x2="10" y2="11" /><line x1="14" y1="18" x2="14" y2="11" /><line x1="18" y1="18" x2="18" y2="11" /><polygon points="12 2 20 7 4 7" /></>,
@@ -298,8 +326,25 @@ function CardFace({ card, w }) {
   );
 }
 
+// Classic French face: rank and pip in two corners, the suit big in the middle
+function FrenchFace({ card, w }) {
+  const f = FRENCH[card.suit];
+  const rank = card.rank;
+  return (
+    <div className={`french ${f.red ? 'is-red' : 'is-black'}`} style={{ padding: Math.round(w * 0.083) }}>
+      {[false, true].map(flip => (
+        <div key={flip ? 'br' : 'tl'} className={`french__corner ${flip ? 'french__corner--br' : ''}`}>
+          <span className="french__rank" style={{ fontSize: Math.round(w * 0.24) }}>{rank}</span>
+          <span className="french__pip" style={{ fontSize: Math.round(w * 0.17) }}>{f.glyph}&#xFE0E;</span>
+        </div>
+      ))}
+      <span className="french__big" style={{ fontSize: Math.round(w * 0.5) }}>{f.glyph}&#xFE0E;</span>
+    </div>
+  );
+}
+
 function Card({ card, w = 96, onClick, dim, selected, className = '', style }) {
-  const { suit } = useI18n();
+  const { suit, deck } = useI18n();
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [card.suit, card.rank]);
   const interactive = !!onClick;
@@ -313,7 +358,7 @@ function Card({ card, w = 96, onClick, dim, selected, className = '', style }) {
       onKeyDown={interactive ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       aria-label={`${card.rank} ${suit(card.suit)}`}
     >
-      {broken ? <CardFace card={card} w={w} /> : (
+      {deck === 'french' ? <FrenchFace card={card} w={w} /> : broken ? <CardFace card={card} w={w} /> : (
         <img src={getCardImagePath(card)} alt="" draggable={false} onError={() => setBroken(true)} />
       )}
     </div>
@@ -344,11 +389,11 @@ function BackFan({ count, w = 44, step = 14 }) {
   );
 }
 
-function Seat({ name, stats, turn, badge, compact }) {
+function Seat({ name, avatar, stats, turn, badge, compact }) {
   const { t } = useI18n();
   return (
     <div className={`seat ${compact ? 'seat--compact' : ''} ${turn ? 'seat--turn' : ''}`}>
-      <div className="seat__avatar">{initial(name)}</div>
+      <div className="seat__avatar"><AvatarFace name={name} avatar={avatar} /></div>
       <div className="seat__info">
         <div className="seat__name">
           <span>{name}</span>
@@ -411,31 +456,16 @@ function Stage({ children }) {
 // Desktop table: oval felt, or a square-cornered cloth / wood top
 function Table({ top = 130 }) {
   const { theme } = useLayout();
-  return <div className={`table table--${theme}`} style={{ top }}><div className={`table__surface surface-${theme}`} /></div>;
+  return <div className={`table table--${tableKind(theme)}`} style={{ top }}><div className={`table__surface surface-${theme}`} /></div>;
 }
 
 // Phone table: fills the middle of the screen, content flows inside
 function MobileTable({ children }) {
   const { theme } = useLayout();
   return (
-    <div className={`m-table m-table--${theme}`}>
+    <div className={`m-table m-table--${tableKind(theme)}`}>
       <div className={`m-table__surface surface-${theme}`}>{children}</div>
     </div>
-  );
-}
-
-function CodePill({ code }) {
-  const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="code-pill"
-      title={t('copyCode')}
-      onClick={() => copyText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}
-    >
-      {copied ? t('copied') : code}
-    </button>
   );
 }
 
@@ -451,7 +481,7 @@ function BuyRoundButton() {
 }
 
 function Menu({ onNewGame, onLeave }) {
-  const { theme, setTheme, t, openDonate } = useApp();
+  const { theme, setTheme, deck, setDeck, t, openDonate } = useApp();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -479,14 +509,28 @@ function Menu({ onNewGame, onLeave }) {
             <LangSwitch compact />
           </div>
           <div className="menu__sep" />
+          <div className="menu__label">{t('cards')}</div>
+          <div className="deck-switch">
+            {DECKS.map(d => (
+              <button type="button" key={d} className={`deck-opt ${deck === d ? 'is-on' : ''}`} onClick={() => setDeck(d)} aria-pressed={deck === d}>
+                <span className={`mini-card ${d === 'french' ? 'is-black' : 'is-red'}`}>{d === 'french' ? '\u2660\uFE0E' : <img src={SUIT_IMG.hearts} alt="" />}</span>
+                <span className="deck-opt__text">
+                  <b>{t(d === 'french' ? 'deckFrench' : 'deckHungarian')}</b>
+                  <small>{d === 'french' ? '\u2665 \u2666 \u2660 \u2663' : t('deckHungarianSub')}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="menu__sep" />
           <div className="menu__label">{t('table')}</div>
-          {THEMES.map(th => (
-            <button type="button" key={th.id} className={`menu__item ${theme === th.id ? 'is-on' : ''}`} onClick={() => setTheme(th.id)} aria-pressed={theme === th.id}>
-              <span className={`swatch surface-${th.id}`} />
-              <span className="menu__item-text">{t(th.label)}</span>
-              {theme === th.id && <Icon name="check" size={15} />}
-            </button>
-          ))}
+          <div className="swatches">
+            {THEMES.map(th => (
+              <button type="button" key={th.id} className={`swatch-opt ${theme === th.id ? 'is-on' : ''}`} onClick={() => setTheme(th.id)} aria-pressed={theme === th.id} title={t(th.label)}>
+                <span className="swatch-opt__ring"><span className={`swatch surface-${th.id}`}>{theme === th.id && <Icon name="check" size={14} />}</span></span>
+                <span className="swatch-opt__label">{t(th.short)}</span>
+              </button>
+            ))}
+          </div>
           <div className="menu__sep" />
           <button type="button" className="menu__item menu__item--danger" onClick={() => { setOpen(false); onLeave(); }}>
             <Icon name="logout" size={17} /><span className="menu__item-text">{t('leaveTable')}</span>
@@ -561,7 +605,7 @@ function GameOver({ gs, me, isHost, lowestWins, onPlayAgain, onLeave }) {
         {order.map((idx, place) => (
           <div key={idx} className={`standing ${place === 0 ? 'standing--win' : ''}`}>
             <span className="standing__rank">{place + 1}</span>
-            <span className="standing__avatar">{initial(gs.players[idx].name)}</span>
+            <span className="standing__avatar"><AvatarFace name={gs.players[idx].name} avatar={gs.players[idx].avatar} /></span>
             <span className="standing__name">{idx === me ? t('youTag', { name: gs.players[idx].name }) : gs.players[idx].name}</span>
             <span className="standing__score">{gs.scores[idx]}</span>
           </div>
@@ -587,7 +631,7 @@ function GameOver({ gs, me, isHost, lowestWins, onPlayAgain, onLeave }) {
 
 // ---------- Things that sit on the table (desktop: placed; phone: stacked) ----------
 
-const usePaper = () => useLayout().theme !== 'felt';
+const usePaper = () => tableKind(useLayout().theme) !== 'felt';
 
 function CenterPanel({ top, wide, children }) {
   const { mobile } = useLayout();
@@ -691,16 +735,16 @@ function MobileOpponent({ count, seat, tag, small }) {
   );
 }
 
-function GameShell({ title, code, status, actions, opponents, center, below, hand, me, overlays, desk }) {
+function GameShell({ title, status, actions, opponents, center, below, hand, me, overlays, desk }) {
   const { mobile, theme } = useLayout();
   if (mobile) {
     const order = ['left', 'top', 'right'];
     const opps = [...opponents].sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos));
     return (
-      <div className={`m-game theme-${theme}`} onScroll={e => e.currentTarget.scrollTo(0, 0)}>
+      <div className={`m-game theme-${tableKind(theme)}`} onScroll={e => e.currentTarget.scrollTo(0, 0)}>
         <div className="m-game__bg" />
         <div className="m-header">
-          <div className="m-header__left"><span className="header__game">{title}</span><CodePill code={code} /></div>
+          <div className="m-header__left"><span className="header__game">{title}</span></div>
           <div className="m-header__right">{actions}</div>
         </div>
         <div className="m-phase"><div className="status-pill">{status}</div></div>
@@ -720,7 +764,7 @@ function GameShell({ title, code, status, actions, opponents, center, below, han
       <div className="stage__bg" />
       <Table top={desk.tableTop} />
       <div className="header">
-        <div className="header__left"><span className="header__game">{title}</span><CodePill code={code} /></div>
+        <div className="header__left"><span className="header__game">{title}</span></div>
         <div className="status-pill">{status}</div>
         <div className="header__right">{actions}</div>
       </div>
@@ -745,7 +789,7 @@ function Donate({ onClose }) {
     { key: 'tierCoffee', sr: 'kafa', icon: ['coffee'], rsd: DONATE.tiers[0] },
     { key: 'tierBeer', sr: 'pivo', icon: ['beer'], rsd: DONATE.tiers[1] },
     { key: 'tierTwoBeers', sr: 'dva piva', icon: ['beer', 'beer'], rsd: DONATE.tiers[2] },
-    { key: 'tierCase', sr: 'gajba', icon: ['package'], custom: true }
+    { key: 'tierCase', sr: 'tura po izboru', icon: ['pencil'], custom: true }
   ];
   const [sel, setSel] = useState(1);
   const [custom, setCustom] = useState('');
@@ -1178,12 +1222,9 @@ function Lobby({ gs, me, onReady, onStart, onLeave }) {
     <>
       <div className="eyebrow">{GAMES[gs.gameType].name} · {mode}</div>
       <h1 className="lobby-center__title">{allIn ? t('everyoneHere') : t('seatedOf', { n, max })}</h1>
-      <div className="code-box">
-        <span className="code-box__value">{gs.gameId}</span>
-        <button type="button" className="code-box__copy" onClick={() => copyText(`${window.location.origin}/?join=${gs.gameId}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}>
-          <Icon name={copied ? 'check' : 'copy'} size={14} />{copied ? t('copied') : t('copyLink')}
-        </button>
-      </div>
+      <button type="button" className="invite-link" onClick={() => copyText(`${window.location.origin}/?join=${gs.gameId}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}>
+        <Icon name={copied ? 'check' : 'copy'} size={14} />{copied ? t('copied') : t('copyLink')}
+      </button>
       <div className="lobby-center__hint">{hint}</div>
     </>
   );
@@ -1224,7 +1265,7 @@ function Lobby({ gs, me, onReady, onStart, onLeave }) {
             const st = statusOf(idx);
             return (
               <div key={idx} className="m-seat-row">
-                <div className="m-seat-row__avatar">{initial(p.name)}</div>
+                <div className="m-seat-row__avatar"><AvatarFace name={p.name} avatar={p.avatar} /></div>
                 <span className="m-seat-row__name">{nameOf(idx)}</span>
                 <span className="m-seat-row__status"><span className={`dot ${st === 'ready' ? 'dot--good' : st === 'host' ? 'dot--gold' : 'dot--off'}`} />{t(st)}</span>
               </div>
@@ -1252,6 +1293,7 @@ function Lobby({ gs, me, onReady, onStart, onLeave }) {
     return (
       <Seat
         name={nameOf(idx)}
+        avatar={p.avatar}
         stats={t(statusOf(idx))}
         badge={p.ready ? <span className="seat__check"><Icon name="check" size={13} /></span> : null}
       />
@@ -1288,7 +1330,8 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
 
   useEffect(() => { if (gs.state !== 'talon_reveal') setDiscards([]); }, [gs.state]);
 
-  const positions = ['bottom', 'left', 'right'];
+  // Play goes counter-clockwise: the next player sits on your right
+  const positions = ['bottom', 'right', 'left'];
   const idxAt = pos => (me + positions.indexOf(pos)) % 3;
   const name = i => gs.players[i]?.name || '';
   const myTurn = gs.currentPlayer === me;
@@ -1303,8 +1346,8 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
   const hasBetl = bids.includes('betl');
   const iAmFirst = me === (gs.currentDealer + 1) % 3;
   const canBid = n => {
-    if (isFirstBid) return n >= 5;
-    if (n === 5) return false;
+    if (n < 6) return false; // 5 is not biddable: the first player gets it by passing
+    if (isFirstBid) return true;
     if (hasBetl) return n >= 7;
     return n > highest;
   };
@@ -1320,7 +1363,7 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
 
   const phaseKey = {
     bidding: 'bidding', talon_reveal: 'talon', trump_selection: 'choosingTrump',
-    playing: 'playing', trick_complete: 'playing', finished: 'gameOver'
+    playing: 'playing', trick_complete: 'playing', round_over: 'roundOver', finished: 'gameOver'
   }[gs.state];
 
   const turnOf = i => {
@@ -1371,14 +1414,14 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
           <>
             <div className="center-panel__prompt">{t(iAmFirst && isFirstBid ? 'youOpen' : 'yourTurnBid')}</div>
             <div className="bid-row">
-              {[5, 6, 7, 8, 9, 10].map(n => (
+              {[6, 7, 8, 9, 10].map(n => (
                 <button type="button" key={n} className="bid-chip" disabled={!canBid(n)} onClick={() => emit('bid', { bid: n })}>{n}</button>
               ))}
             </div>
             <div className="bid-row">
               <button type="button" className="pill pill--outline" disabled={!isFirstBid && highest >= 7} onClick={() => emit('bid', { bid: 'betl' })}>Betl</button>
               <button type="button" className="pill pill--red" onClick={() => emit('bid', { bid: 'mexico' })}>Mexico</button>
-              <button type="button" className="pill pill--soft" disabled={isFirstBid && iAmFirst} onClick={() => emit('bid', { bid: 'pass' })}>{t('pass')}</button>
+              <button type="button" className="pill pill--soft" onClick={() => emit('bid', { bid: 'pass' })}>{t('pass')}</button>
             </div>
           </>
         ) : (
@@ -1420,6 +1463,26 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
       </CenterPanel>
     ) : (
       <TableNote top={300} eyebrow={t('callTrumps')} title={t('theyChoosing', { name: name(gs.bidWinner) })}>{t('winnerPicksTrump')}</TableNote>
+    );
+  } else if (gs.state === 'round_over' && gs.lastRound) {
+    const r = gs.lastRound;
+    center = (
+      <CenterPanel top={196}>
+        <div className="eyebrow">{t('roundOver')}</div>
+        <div className="center-panel__current">
+          <div className="center-panel__big">{contractText()}</div>
+          <Tag gold={r.made}>{t(r.made ? 'roundMade' : 'roundDown')}</Tag>
+        </div>
+        <div className="round-results">
+          {gs.players.map((p, i) => (
+            <div key={i} className={`round-results__row ${i === r.bidWinner ? 'is-caller' : ''}`}>
+              <span className="round-results__name">{i === me ? t('you') : p.name}</span>
+              <span className="round-results__tricks">{t('tricksN', { n: r.tricksTaken[i] })}</span>
+              <span className={`round-results__pts ${r.roundScores[i] > 0 ? 'is-good' : r.roundScores[i] < 0 ? 'is-bad' : ''}`}>{signed(r.roundScores[i])}</span>
+            </div>
+          ))}
+        </div>
+      </CenterPanel>
     );
   } else if (gs.state === 'playing' || gs.state === 'trick_complete') {
     center = (
@@ -1477,7 +1540,6 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
   return (
     <GameShell
       title="Mexico"
-      code={code}
       status={<>
         <StatusPart>{contractText() || t('roundN', { n: history.length + 1 })}</StatusPart>
         <StatusSep />
@@ -1494,14 +1556,14 @@ function MexicoGame({ socket, gs, me, isHost, onLeave }) {
         return {
           pos,
           count: gs.handCounts?.[i] ?? 0,
-          seat: { name: name(i), stats: stats(i), turn: turnOf(i) },
-          mseat: { name: name(i), stats: shortStats(i), turn: turnOf(i) },
+          seat: { name: name(i), avatar: gs.players[i]?.avatar, stats: stats(i), turn: turnOf(i) },
+          mseat: { name: name(i), avatar: gs.players[i]?.avatar, stats: shortStats(i), turn: turnOf(i) },
           tag: tagFor(i)
         };
       })}
       center={center}
       hand={{ cards: hand, render: renderCard }}
-      me={{ seat: { name: t('youTag', { name: name(me) }), stats: stats(me), turn: turnOf(me) }, tag: tagFor(me) }}
+      me={{ seat: { name: t('youTag', { name: name(me) }), avatar: gs.players[me]?.avatar, stats: stats(me), turn: turnOf(me) }, tag: tagFor(me) }}
       overlays={overlays}
       desk={{ tableTop: 130, sideTop: 300, handTop: discarding ? 586 : 612, meTop: 790 }}
     />
@@ -1553,7 +1615,7 @@ function LorumGame({ socket, gs, me, isHost, onLeave }) {
   const name = i => gs.players[i]?.name || '';
   const myTurn = gs.currentPlayer === me;
   const contract = contractOf(gs.currentContract);
-  const isLora = gs.state === 'lora_playing';
+  const isLora = gs.state === 'lora_playing' || gs.state === 'lora_complete';
   const inTricks = gs.state === 'playing' || gs.state === 'trick_complete';
   const choosing = gs.state === 'contract_selection';
   const iChoose = choosing && gs.contractSelector === me;
@@ -1718,7 +1780,6 @@ function LorumGame({ socket, gs, me, isHost, onLeave }) {
   return (
     <GameShell
       title="Lorum"
-      code={code}
       status={<>
         <StatusPart>{t(mobile ? 'dealShort' : 'dealN', { n: dealNo })} · {gs.currentDealer === me ? t('youDeal') : t('theyDeal', { name: name(gs.currentDealer) })}</StatusPart>
         <StatusSep />
@@ -1736,14 +1797,14 @@ function LorumGame({ socket, gs, me, isHost, onLeave }) {
         return {
           pos,
           count: gs.handCounts[i],
-          seat: { name: name(i), stats: stats(i), turn: turnOf(i) },
-          mseat: { name: name(i), stats: shortStats(i), turn: turnOf(i) }
+          seat: { name: name(i), avatar: gs.players[i]?.avatar, stats: stats(i), turn: turnOf(i) },
+          mseat: { name: name(i), avatar: gs.players[i]?.avatar, stats: shortStats(i), turn: turnOf(i) }
         };
       })}
       center={center}
       below={below}
       hand={{ cards: hand, render: renderCard }}
-      me={{ seat: { name: t('youTag', { name: name(me) }), stats: iChoose ? `${t('scoreN', { n: gs.scores[me] })} · ${t('yourPick')}` : stats(me), turn: turnOf(me) } }}
+      me={{ seat: { name: t('youTag', { name: name(me) }), avatar: gs.players[me]?.avatar, stats: iChoose ? `${t('scoreN', { n: gs.scores[me] })} · ${t('yourPick')}` : stats(me), turn: turnOf(me) } }}
       overlays={overlays}
       desk={{ tableTop: 150, sideTop: 330, topTop: 74, handTop: isLora ? 650 : inTricks ? 652 : 634, meTop: 808 }}
     />
@@ -1762,9 +1823,14 @@ function App() {
     return THEMES.some(x => x.id === th) ? th : 'felt';
   });
   const setTheme = th => { setThemeState(th); savePref('table', th); };
+  const [deck, setDeckState] = useState(() => {
+    const d = loadPref('deck', 'hungarian');
+    return DECKS.includes(d) ? d : 'hungarian';
+  });
+  const setDeck = d => { setDeckState(d); savePref('deck', d); };
   const [lang, setLangState] = useState(defaultLang);
   const setLang = l => { setLangState(l); savePref('lang', l); };
-  const i18n = useMemo(() => makeI18n(lang), [lang]);
+  const i18n = useMemo(() => makeI18n(lang, deck), [lang, deck]);
   const [donateOpen, setDonateOpen] = useState(false);
   const [tables, setTables] = useState([]);
   const [denied, setDenied] = useState(null);
@@ -1876,7 +1942,7 @@ function App() {
     ...away.map(p => i18n.t('playerReconnecting', { name: p.name }))
   ].filter(Boolean);
 
-  const ctx = { mobile, vw: viewport.w, theme, setTheme, setLang, openDonate: () => setDonateOpen(true), ...i18n };
+  const ctx = { mobile, vw: viewport.w, theme, setTheme, deck, setDeck, setLang, openDonate: () => setDonateOpen(true), ...i18n };
 
   if (!socket) return null;
 
